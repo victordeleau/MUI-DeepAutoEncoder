@@ -1,4 +1,7 @@
 # FlexEncoder
+
+WIP ... currently refactoring the code.
+
 ## Deep Autoencoder for Recommender Systems: Parameter Influence Analysis
 
 This is the source code for my paper:

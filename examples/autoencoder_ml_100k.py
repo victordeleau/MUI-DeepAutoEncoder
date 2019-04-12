@@ -22,6 +22,8 @@ if not pre_train:
     ml_ds_test = Movielens(ml_option, train=False)
 
     model_option = ModelOption(g_root_dir="recsys_deeplearning", g_save_dir=model_name)
+
+    # load model
     model = Autoencoder(model_option,
                         input_dim=ml_option.d_rating_columns_unique_count[
                             ml_option.dp_pivot_indexes[1]])  # get the movie count as number of columns

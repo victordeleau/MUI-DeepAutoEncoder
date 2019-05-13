@@ -1,0 +1,26 @@
+DEBUG:03/29-14:01:41:Downloading http://files.grouplens.org/datasets/movielens/ml-latest-small.zip
+DEBUG:03/29-14:01:41:Unzipping ds_movielens/100k/raw/ml-latest-small.zip
+DEBUG:03/29-14:01:45:Processing rating mean for dataset 100k 
+DEBUG:03/29-14:01:56:Processed dataset 100k...
+DEBUG:03/29-14:02:00:epoch:0, RMSE:0.9215157697956177, total_lost:8.491913139820099, denom:10.0
+DEBUG:03/29-14:02:04:epoch:1, RMSE:0.9845604101287314, total_lost:19.387184023857117, denom:20.0
+DEBUG:03/29-14:02:08:epoch:2, RMSE:1.0579279261412184, total_lost:33.57634490728378, denom:30.0
+DEBUG:03/29-14:02:12:epoch:3, RMSE:1.0248101500563152, total_lost:42.00943374633789, denom:40.0
+DEBUG:03/29-14:02:16:epoch:4, RMSE:0.9795579353089378, total_lost:47.97668743133545, denom:50.0
+DEBUG:03/29-14:02:20:epoch:5, RMSE:0.9275303995864922, total_lost:51.61875852942467, denom:60.0
+DEBUG:03/29-14:02:24:epoch:6, RMSE:0.8849167761145615, total_lost:54.81543904542923, denom:70.0
+DEBUG:03/29-14:02:29:epoch:7, RMSE:0.845583225322904, total_lost:57.2008792757988, denom:80.0
+DEBUG:03/29-14:02:33:epoch:8, RMSE:0.8132571170299174, total_lost:59.52484245598316, denom:90.0
+DEBUG:03/29-14:02:37:epoch:9, RMSE:0.7860033062711851, total_lost:61.78011974692345, denom:100.0
+INFO:03/29-14:02:37:Learn in: 41.087100476999694 seconds
+INFO:03/29-14:02:37:load model:recsys_deeplearning/autoencoder_100k/movielens_100k_preds.txt.model
+INFO:03/29-14:03:09:RMSE 1.0895202976764518
+DEBUG:03/29-14:19:52:file: ml-latest-small.zip existed, skip download
+DEBUG:03/29-14:19:52:Unzipping ds_movielens/100k/raw/ml-latest-small.zip
+DEBUG:03/29-14:19:52:Already mapped dataset 100k, skip.
+DEBUG:03/29-14:19:52:Already processed user mean 100k, skip.
+DEBUG:03/29-14:19:52:Already processed movie mean 100k, skip.
+DEBUG:03/29-14:19:52:Already processed rating mean 100k, skip.
+DEBUG:03/29-14:19:52:Processed dataset 100k...
+DEBUG:03/29-14:19:58:epoch:0, RMSE:0.8977441384472834, total_lost:8.05944538116455, denom:10.0
+DEBUG:03/29-14:20:05:epoch:1, RMSE:0.9837260483779097, total_lost:19.354338765144348, denom:20.0

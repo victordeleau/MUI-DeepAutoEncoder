@@ -12,13 +12,6 @@ from tool.logging import set_logging
 from dataset.dataset_getter import DatasetGetter
 from model.base_dae import BaseDAE
 
-"""
-from dataset.dataset_getter import dataset_getter
-from dataset.dataset import Dataset
-
-from model.algo_base_deep import AlgoBaseDeep
-from model.autoencoder import AutoEncoder
-"""
 
 if __name__ == "__main__":
 

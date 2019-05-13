@@ -2,17 +2,20 @@
 
 from torch import nn
 import torch
+import numpy as np
 
 
 class BaseDAE(nn.Module):
 
     def __init__(self, io_size, z_size, nb_input_layer=1, nb_output_layer=1, activation=nn.ReLU ):
 
-        super().__init__()
+        super(BaseDAE, self).__init__()
 
         self.io_size = io_size
         self.z_size = z_size
         self.activation = activation
+
+        self.mode = 0 # default to train mode (1 for validation mode, 2 for test mode)
 
         # variable length input layer #############################################################
 
@@ -24,7 +27,7 @@ class BaseDAE(nn.Module):
         input_layer.append( nn.Linear(io_size, z_size) )
         input_layer.append( activation(True) )
 
-        self.encoder = nn.Sequential( *input_layer )
+        self.input_layer = nn.Sequential( *input_layer )
 
 
         # variable length output layer #############################################################
@@ -37,10 +40,23 @@ class BaseDAE(nn.Module):
             output_layer.append( nn.Linear(io_size, io_size) )
             output_layer.append( activation(True) )
             
-        self.decoder = nn.Sequential( *output_layer )
+        self.output_layer = nn.Sequential( *output_layer )
+
+
+        # initialize weights and biases ###########################################################
+
+        # recursive application of the provided function to any nn.Linear layer
+
+        self.input_layer.apply(self.init_weight_general_rule)
+        self.input_layer.apply(self.init_bias_zero)
+        
+        self.output_layer.apply(self.init_weight_general_rule)
+        self.output_layer.apply(self.init_bias_zero)
+
+        
 
     """
-        apply forward pass to input
+        apply forward pass to input vector x
         input
             input vector of size self.io_size
         output
@@ -48,10 +64,69 @@ class BaseDAE(nn.Module):
     """
     def forward(self, x):
 
-        x = self.encoder(x)
-        x = self.decoder(x)
+        z = self.encode(x)
 
-        return x
+        y = self.decode(z)
+
+        return y
+
+
+    """
+        take input vector x and encode to z
+        input
+            x: input vector to encode
+        output
+            z: encoded output vector
+    """
+    def encode(self, x):
+
+        z = self.input_layer(x)
+
+        return z
+        
+
+    """
+        take compressed vector z and decode to y
+        input
+            z: compressed vector to decode
+        output
+            y: decoded output vector
+    """
+    def decode(self, z):
+        
+        y = self.output_layer(z)
+
+        return y
+
+
+    """
+        initialize the auto encoder's weight using general rule
+        input
+            m: nn.Linear layer
+    """
+    def init_weight_general_rule(self, m):
+
+        classname = m.__class__.__name__
+
+        if classname.find('Linear') != -1:
+            
+            n = m.in_features # get nb of neural input
+            y = 1.0/np.sqrt(n)
+            m.weight.data.uniform_(-y, y)
+        
+        
+    """
+        initialize the auto encoder's biases with zeros
+        input
+            m: nn.Linear layer
+    """
+    def init_bias_zero(self, m):
+
+        classname = m.__class__.__name__
+
+        if classname.find('Linear') != -1:
+            
+            m.bias.data.fill_(0)
 
 
     """def activation(self, input, kind):

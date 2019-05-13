@@ -15,7 +15,7 @@ from dataset.dataset import RatingDataset
 """
     download and return specified dataset into a Dataset object
 """
-class dataset_getter(object):
+class DatasetGetter(object):
 
     def __init__(self):
 
@@ -73,7 +73,7 @@ class dataset_getter(object):
                 'file': 'http://files.grouplens.org/datasets/movielens/ml-100k.zip',
                 'year': 1998,
                 'delimiter': '\t',
-                'rating_file': 'u.data',
+                'rating_file': 'u.data',    
                 'keep_column': ["userId","itemId","rating"],
                 'rename_column': {"movieId": "itemId"}
             })
@@ -130,7 +130,7 @@ class dataset_getter(object):
             df_data = df_data[["userId","itemId","rating"]]
             pass
 
-        return RatingDataset(df_data, dataset_name)
+        return RatingDataset(df_data, name=dataset_name)
 
 
     """
@@ -149,9 +149,7 @@ class dataset_getter(object):
 
         if os.path.exists(dataset_location + dataset_name + ".dump"):  # if local dataset object exist, load it
 
-            with open(dataset_location + dataset_name + ".dump", 'rb') as f:
-
-                return pickle.load( f )
+            return True
         
         return None
 

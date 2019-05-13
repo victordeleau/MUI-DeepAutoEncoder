@@ -4,3 +4,4 @@ examples/data*
 examples/recsys*
 .idea/
 __pycache__/
+data/

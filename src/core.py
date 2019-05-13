@@ -6,9 +6,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
+from torch.autograd import Variable
 
 from tool.logging import set_logging
-from dataset.dataset_getter import dataset_getter
+from dataset.dataset_getter import DatasetGetter
 from model.base_dae import BaseDAE
 
 """
@@ -31,10 +32,12 @@ if __name__ == "__main__":
 
     # download dataset (if necessary)
 
-    dataset = None
-    dg = dataset_getter()
+    # dataset #############################################################################
 
-    if dg.local_dataset_found():
+    dataset = None
+    dg = DatasetGetter()
+
+    if dg.local_dataset_found() and sys.argv[1] != "0":
 
         logging.info( "Dataset found on disk, loading ..." )
         dataset = dg.load_local_dataset()
@@ -50,13 +53,17 @@ if __name__ == "__main__":
         dg.export_dataset(dataset)
         logging.info( "---> writing OK" )
 
+    training_and_validation_set, testing_set = dataset.get_split_sets(split_factor=0.9)
+
+    training_set, validation_set = training_and_validation_set.get_split_sets(split_factor=0.8)
 
     # model #############################################################################
 
-    learning_rate = 1e-3
-    weight_decay = 1e-5
+    learning_rate = 1e-4
+    weight_decay = 0
     nb_epoch = 50
-    z_size = 126
+    z_size = 1024
+    batch_size = 64
 
     # check which computing device should be used
     if torch.cuda.is_available():
@@ -66,45 +73,60 @@ if __name__ == "__main__":
         device = torch.device('cpu')
         logging.info("No Cuda device available, using CPU")
 
-    myBaseDAE = BaseDAE( io_size=dataset.nb_user, z_size=z_size ) # instantiate model
+    myBaseDAE = BaseDAE( io_size=dataset.nb_user+1, z_size=z_size, nb_input_layer=2, nb_output_layer=2 ).double()
 
-    criterion = nn.MSELoss() # loss method
+    criterion = nn.MSELoss()
 
-    # algorithm used to optimize the autoencoder
     optimizer = torch.optim.Adam( myBaseDAE.parameters(), lr=learning_rate, weight_decay=weight_decay )
 
-    dataset.set_view("user_view")
-    for vector in dataset:
-        print( np.nonzero(vector) )
+    dataset.set_view("item_view")
+    sum_training_loss, sum_validation_loss = 0.0, 0.0
+
+    logging.info("Training has started.")
     
-    # train the autoencoder
-    """for epoch in range(nb_epoch):
+    for epoch in range(nb_epoch):
 
-        for data in dataloader:
+        myBaseDAE.train()
+        training_iter_nb, sum_training_loss = 0, 0
 
-            img, _ = data
-            img = img.view(img.size(0), -1)
-            img = Variable(img).cuda()
+        for training_batch in training_set:
 
-            # ===================forward=====================
+            cuda_input = Variable( torch.from_numpy( training_batch ) )
 
-            output = model(img)
-            loss = criterion(output, img)
+            cuda_output = myBaseDAE( cuda_input )   
 
-            # ===================backward====================
+            loss = criterion( cuda_output, cuda_input )
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-        # ===================log========================
+            sum_training_loss += loss.item()
+            training_iter_nb += 1
 
-        print('epoch [{}/{}], loss:{:.4f}'.format(epoch + 1, nb_epoch, loss.data[0]))
+        myBaseDAE.eval()
+        validation_iter_nb, sum_validation_loss = 0, 0
 
-        #if epoch % 10 == 0:
-            #pic = to_img(output.cpu().data)
-            #save_image(pic, './mlp_img/image_{}.png'.format(epoch))
-    """
+        for validation_batch in validation_set:
+
+            cuda_input = Variable( torch.from_numpy( validation_batch ) )
+
+            cuda_output = myBaseDAE( cuda_input )   
+
+            loss = criterion( cuda_output, cuda_input )
+
+            sum_validation_loss += loss.item()
+            validation_iter_nb += 1
+
+        logging.info('epoch [{}/{}], training loss:{:.4f}, validation loss:{:.4f}'.format(
+            epoch + 1,
+            nb_epoch,
+            sum_training_loss/training_iter_nb,
+            sum_validation_loss/validation_iter_nb)
+        )
+        sum_training_loss, sum_validation_loss = 0, 0
+        training_iter_nb, validation_iter_nb = 0, 0
+
 
     #torch.save(model.state_dict(), './sim_autoencoder.pth')
 

@@ -1,47 +1,89 @@
 # load and prepare dataset
 
 import pandas as pd
+import math
 import logging
 from sklearn.model_selection import train_test_split
 import torchvision
 import torch
 import scipy.sparse as sparse
 import numpy as np
+from random import shuffle
+from torch.utils.data.dataset import Dataset as PytorchDataset
 
 
 """
     load provided dataset inside object, provide useful methods and information
+    input
+        ...
 """
-class RatingDataset(torch.utils.data.Dataset):
+class RatingDataset(PytorchDataset):
 
-    def __init__(self, df_data, name="no_name", view="item_view"):
+    def __init__(self, data, name, view=None, has_been_randomized=None, is_sub_dataset=False,
+            user_index_swap=None, item_index_swap=None,
+            userId_map=None, itemId_map=None,
+            index_user=None, index_item=None,
+            nb_user=None, nb_item=None ):
 
-        self.name = name
+        self.name = (name if name != None else name)
 
-        if not isinstance(df_data, pd.DataFrame):
-            logging.error("Error: provided data is not a pandas.DataFrame object")
-            raise Exception("Error: provided data is not a pandas.DataFrame object")
+        self.has_been_randomized = (has_been_randomized if has_been_randomized!=None else False)
+        
+        self.is_sub_dataset = (is_sub_dataset if is_sub_dataset!=None else False)
 
-        df_data = self._map_index(df_data)
+        self.view = (view if view != None else "user_view")
 
-        self.count = 0 # for iterator
-
-        # store in csr format
-        self.data = sparse.csr_matrix(
-            ( df_data.values[:, 2], (df_data.values[:, 0].astype(int), df_data.values[:, 1].astype(int)) )
-        )
-
-        self.index_user = df_data.userId.unique()
-        self.index_item = df_data.itemId.unique()
-
-        self.nb_user = len( self.index_user )
-        self.nb_item = len( self.index_item )
-
-        self.view = view
-
-        self.is_mapped = False
+        self.iterator_count = 0
         self.column_id = None
-        self.row_id = None
+        self.row_id = None 
+
+        if isinstance(data, pd.DataFrame):
+
+            self.userId_map = None
+            self.itemId_map = None
+            data = self._map_index(data) # map string index to monotonic int
+
+            self.data = sparse.csr_matrix( # store in csr format
+                ( data.values[:, 2], (data.values[:, 0].astype(int), data.values[:, 1].astype(int)) )
+            )
+
+            self.index_user = data.userId.unique()
+            self.index_item = data.itemId.unique()
+
+            # get number of user and item
+            self.nb_user = len( self.index_user )
+            self.nb_item = len( self.index_item )
+
+            self.user_index_swap = (np.arange(self.nb_user) if user_index_swap==None else user_index_swap)
+            self.item_index_swap = (np.arange(self.nb_item) if item_index_swap==None else item_index_swap)
+
+        elif isinstance(data, sparse.csr_matrix) and not (
+                userId_map!=None and
+                itemId_map!=None and
+                index_user!=None and
+                index_item!=None and
+                nb_user!=None and
+                nb_item!=None and
+                user_index_swap!=None and
+                item_index_swap!=None ):
+
+                self.userId_map = userId_map
+                self.itemId_map = itemId_map
+                self.index_user = index_user
+                self.index_item = index_item
+                self.nb_user = nb_user
+                self.nb_item = nb_item
+                self.user_index_swap = user_index_swap
+                self.item_index_swap = item_index_swap
+
+                self.data = data
+
+        else:
+
+            logging.error("Error: provided data is not a pandas.DataFrame object")
+            raise Exception("Error: provided data is not a pandas.DataFrame object")       
+
+        print(self.nb_user, self.nb_item)
 
 
     """
@@ -58,8 +100,11 @@ class RatingDataset(torch.utils.data.Dataset):
         else:
             return 0
 
+
     """
         allow index access of the dataset (overide required from abstract parent class)
+        input
+            idx: index of the vector we want to grab
     """
     def __getitem__(self, idx):
 
@@ -67,15 +112,17 @@ class RatingDataset(torch.utils.data.Dataset):
             
             if idx < 0 or idx > self.nb_item:
                 return 0
-            else: 
-                return self.data[:,idx].todense()
+            else:
+                swap_idx = self.item_index_swap[idx]
+                return np.ravel( self.data[:,swap_idx].todense() )
 
         elif self.view == "user_view":
             
             if idx < 0 or idx > self.nb_user:
                 return 0
             else:
-                return self.data[idx,:].todense()
+                swap_idx = self.user_index_swap[idx]
+                return np.ravel( self.data[swap_idx,:].todense() )
 
         else:
             return 0
@@ -91,31 +138,16 @@ class RatingDataset(torch.utils.data.Dataset):
 
         if new_view == "item_view":
             self.view = "item_view"
-            self.count = 0
+            self.iterator_count = 0
             return True
 
         elif new_view == "user_view":
             self.view = "user_view"
-            self.count = 0
+            self.iterator_count = 0
             return True
 
         else:
             return False
-
-
-    """
-        split the dataset in two according to split factor
-        input
-            factor: 0>factor>1 float value
-        output
-            p1: Dataset object
-            p2: Dataset object
-    """
-    def split(self, factor=0.8):
-
-        train_df, test_df = train_test_split(self.data, test_size=1-factor)
-
-        return Dataset(train_df), Dataset(test_df)
 
 
     """
@@ -143,6 +175,24 @@ class RatingDataset(torch.utils.data.Dataset):
         non_zero = self.data.nonzero()
         for i,j in zip(*non_zero):
             self.data[i, j] -= gm + um[j] + im[i]
+
+
+    """
+        create random swap of row and column indices
+        don't randomize and return 0 if self.has_been_randomized==True
+        typically if current dataset is a subset of another dataset that has
+        been previously randomized.
+    """
+    def randomize(self):
+
+        if not self.has_been_randomized:
+
+            self.user_index_swap = shuffle(np.arrange(self.nb_user))
+            self.item_index_swap = shuffle(np.arrange(self.nb_item))
+        
+            return self.user_index_swap, self.item_index_swap
+
+        return 0
 
 
     """
@@ -186,39 +236,61 @@ class RatingDataset(torch.utils.data.Dataset):
         
         if self.view == "item_view":
 
-            if self.count > self.nb_item:
+            self.iterator_count += 1
+
+            if self.iterator_count > self.nb_item:
                 raise StopIteration
-            
-            self.count += 1
-            return self.__getitem__(self.count-1)
+
+            return self.__getitem__(self.iterator_count-1)
 
 
         elif self.view == "user_view":
 
-            if self.count > self.nb_user:
+            self.iterator_count += 1
+
+            if self.iterator_count > self.nb_user:
                 raise StopIteration
-            
-            self.count += 1
-            return self.__getitem__(self.count-1)
+
+            return self.__getitem__(self.iterator_count-1)
 
         else:
             return 0
-    
 
 
+    """
+        split the dataset into two sub datasets, to create training/validation/testing sets
+        input
+            split_factor: between 0 and 1, default to 0.8
+        output
+            tuple of two RatingDataset, subset of this
+    """
+    def get_split_sets(self, split_factor=0.8):
 
+        if split_factor >= 1 or split_factor <= 0:
+            return 0
 
-"""
+        first_dataset, second_dataset = train_test_split(self.data, test_size=1-split_factor)
+        first_nb_user, first_nb_item = math.floor( self.nb_user * split_factor), math.floor( self.nb_item * split_factor )
+        second_nb_user, second_nb_item = math.floor( self.nb_user * (1-split_factor)), math.floor( self.nb_item * (1-split_factor) )
 
-ml_option = DatasetOption(g_root_dir='ds_movielens', g_save_dir=dataset, d_ds_name=dataset)
-
-
-ml_ds_train = Movielens(ml_option)
-
-
-ml_ds_train.download_and_process_data()
-
-
-ml_ds_test = Movielens(ml_option, train=False)
-
-"""
+        return (
+                RatingDataset(
+                    first_dataset,
+                    name=self.name+"_subset",
+                    has_been_randomized=True,
+                    is_sub_dataset=True,
+                    user_index_swap=self.user_index_swap, item_index_swap=self.item_index_swap,
+                    userId_map=self.userId_map, itemId_map=self.itemId_map,
+                    index_user=self.index_user, index_item=self.index_item,
+                    nb_user=self.nb_user, nb_item=self.nb_item),
+                    
+                RatingDataset(
+                    second_dataset,
+                    name=self.name+"_subset",
+                    has_been_randomized=True,
+                    is_sub_dataset=True,
+                    user_index_swap=self.user_index_swap, item_index_swap=self.item_index_swap,
+                    userId_map=self.userId_map, itemId_map=self.itemId_map,
+                    index_user=self.index_user, index_item=self.index_item,
+                    nb_user=self.nb_user, nb_item=self.nb_item)
+                )

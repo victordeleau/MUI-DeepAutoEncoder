@@ -1,30 +1,28 @@
 import unittest
 
-from dataset import RatingDataset
-from dataset_getter import DatasetGetter
+import env
 
-import model
-import tool
+from muidae.dataset.rating_dataset import RatingDataset
  
 class TestMUIDAE(unittest.TestCase):
  
-    def test_all(self):
+    def test_all_module(self):
         
-        self.test_dataset()
-        self.test_model()
-        self.test_tool()
+        self.test_dataset_module()
+        self.test_model_module()
+        self.test_tool_module()
 
 
-    def test_dataset(self):
+    def test_dataset_module(self):
 
-        pass
-
-
-    def test_model(self):
-
-        pass
+        import test_dataset
 
 
-    def test_tool(self):
+    def test_model_module(self):
 
-        pass
+        import test_model
+
+
+    def test_tool_module(self):
+
+        import test_tool

@@ -37,53 +37,49 @@ class RatingDataset(PytorchDataset):
         self.column_id = None
         self.row_id = None 
 
-        if isinstance(data, pd.DataFrame):
+        if not is_sub_dataset:
 
+            assert( isinstance(data, pd.DataFrame) )
+        
             self.userId_map = None
             self.itemId_map = None
-            data = self._map_index(data) # map string index to monotonic int
 
-            self.data = sparse.csr_matrix( # store in csr format
-                ( data.values[:, 2], (data.values[:, 0].astype(int), data.values[:, 1].astype(int)) )
+            data = self._map_index_to_monotonic(data)
+
+            self.data = sparse.csr_matrix(
+                (
+                    data.values[:, 2],
+                    (data.values[:, 0].astype(int),
+                    data.values[:, 1].astype(int))
+                )
             )
 
             self.index_user = data.userId.unique()
             self.index_item = data.itemId.unique()
 
-            # get number of user and item
             self.nb_user = len( self.index_user )
             self.nb_item = len( self.index_item )
 
             self.user_index_swap = (np.arange(self.nb_user) if user_index_swap==None else user_index_swap)
             self.item_index_swap = (np.arange(self.nb_item) if item_index_swap==None else item_index_swap)
 
-        elif isinstance(data, sparse.csr_matrix) and not (
-                userId_map!=None and
-                itemId_map!=None and
-                index_user!=None and
-                index_item!=None and
-                nb_user!=None and
-                nb_item!=None and
-                user_index_swap!=None and
-                item_index_swap!=None ):
+        else:
+
+                assert isinstance(data, sparse.csr_matrix)
 
                 self.userId_map = userId_map
                 self.itemId_map = itemId_map
+
                 self.index_user = index_user
                 self.index_item = index_item
-                self.nb_user = nb_user
-                self.nb_item = nb_item
+                
                 self.user_index_swap = user_index_swap
                 self.item_index_swap = item_index_swap
 
-                self.data = data
+                self.nb_user = nb_user
+                self.nb_item = nb_item
 
-        else:
-
-            logging.error("Error: provided data is not a pandas.DataFrame object")
-            raise Exception("Error: provided data is not a pandas.DataFrame object")       
-
-        print(self.nb_user, self.nb_item)
+                self.data = data      
 
 
     """
@@ -164,13 +160,13 @@ class RatingDataset(PytorchDataset):
         gm, um, im = 0, 0, 0
 
         if global_mean == True:
-            gm = self.data.mean() # compute global mean score
+            gm = self.data.mean()
 
         if user_mean == True:
-            um = self.data.mean(axis=0).tolist()[0]  # compute user mean score
+            um = self.data.mean(axis=0).tolist()[0]
         
         if item_mean == True:
-            im = self.data.mean(axis=1).T.tolist()[0] # compute item mean score
+            im = self.data.mean(axis=1).T.tolist()[0]
 
         non_zero = self.data.nonzero()
         for i,j in zip(*non_zero):
@@ -200,7 +196,7 @@ class RatingDataset(PytorchDataset):
         input
             df_data: pandas.DataFrame to process
     """
-    def _map_index(self, df_data):
+    def _map_index_to_monotonic(self, df_data):
 
         temp_dict = {}
         c = 1
@@ -282,7 +278,7 @@ class RatingDataset(PytorchDataset):
                     user_index_swap=self.user_index_swap, item_index_swap=self.item_index_swap,
                     userId_map=self.userId_map, itemId_map=self.itemId_map,
                     index_user=self.index_user, index_item=self.index_item,
-                    nb_user=self.nb_user, nb_item=self.nb_item),
+                    nb_user=first_nb_user, nb_item=first_nb_item),
                     
                 RatingDataset(
                     second_dataset,
@@ -292,5 +288,5 @@ class RatingDataset(PytorchDataset):
                     user_index_swap=self.user_index_swap, item_index_swap=self.item_index_swap,
                     userId_map=self.userId_map, itemId_map=self.itemId_map,
                     index_user=self.index_user, index_item=self.index_item,
-                    nb_user=self.nb_user, nb_item=self.nb_item)
+                    nb_user=second_nb_user, nb_item=second_nb_item)
                 )

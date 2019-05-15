@@ -1,3 +1,0 @@
-from algo_base_deep_old import AlgoBaseDeep
-from autoencoder_old import AutoEncoder
-from base_dae import BaseDAE

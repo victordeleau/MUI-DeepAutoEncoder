@@ -28,27 +28,35 @@ if __name__ == "__main__":
     # dataset #############################################################################
 
     dataset = None
-    dg = DatasetGetter()
+    dataset_getter = DatasetGetter()
 
     if dg.local_dataset_found() and sys.argv[1] != "0":
 
         logging.info( "Dataset found on disk, loading ..." )
-        dataset = dg.load_local_dataset()
+        dataset = dataset_getter.load_local_dataset()
         logging.info( "---> loading OK" )
 
     else:
 
         logging.info( "No dataset found on disk, downloading to disk ..." )
-        dataset = dg.get("100k")
+        dataset = dataset_getter.get("100k")
         dataset.normalize(global_mean=True, user_mean=True, item_mean=True)
 
         logging.info( "Writing dataset object to disk ..." )
-        dg.export_dataset(dataset)
+        dataset_getter.export_dataset(dataset)
         logging.info( "---> writing OK" )
+
+    print(dataset.nb_user, dataset.nb_item)
 
     training_and_validation_set, testing_set = dataset.get_split_sets(split_factor=0.9)
 
+    print(training_and_validation_set.nb_user, training_and_validation_set.nb_item)
+    print(testing_set.nb_user, testing_set.nb_item)
+
     training_set, validation_set = training_and_validation_set.get_split_sets(split_factor=0.8)
+
+    print(training_set.nb_user, training_set.nb_item)
+    print(validation_set.nb_user, validation_set.nb_item)
 
     # model #############################################################################
 
@@ -66,11 +74,11 @@ if __name__ == "__main__":
         device = torch.device('cpu')
         logging.info("No Cuda device available, using CPU")
 
-    myBaseDAE = BaseDAE( io_size=dataset.nb_user+1, z_size=z_size, nb_input_layer=2, nb_output_layer=2 ).double()
+    my_base_dae = BaseDAE( io_size=dataset.nb_user+1, z_size=z_size, nb_input_layer=2, nb_output_layer=2 ).double()
 
     criterion = nn.MSELoss()
 
-    optimizer = torch.optim.Adam( myBaseDAE.parameters(), lr=learning_rate, weight_decay=weight_decay )
+    optimizer = torch.optim.Adam( my_base_dae.parameters(), lr=learning_rate, weight_decay=weight_decay )
 
     dataset.set_view("item_view")
     sum_training_loss, sum_validation_loss = 0.0, 0.0
@@ -79,16 +87,16 @@ if __name__ == "__main__":
     
     for epoch in range(nb_epoch):
 
-        myBaseDAE.train()
+        my_base_dae.train()
         training_iter_nb, sum_training_loss = 0, 0
 
         for training_batch in training_set:
 
-            cuda_input = Variable( torch.from_numpy( training_batch ) )
+            input_data = Variable( torch.from_numpy( training_batch ) )
 
-            cuda_output = myBaseDAE( cuda_input )   
+            output_data = my_base_dae( input_data )
 
-            loss = criterion( cuda_output, cuda_input )
+            loss = criterion( output_data, input_data )
 
             optimizer.zero_grad()
             loss.backward()
@@ -97,16 +105,16 @@ if __name__ == "__main__":
             sum_training_loss += loss.item()
             training_iter_nb += 1
 
-        myBaseDAE.eval()
+        my_base_dae.eval()
         validation_iter_nb, sum_validation_loss = 0, 0
 
         for validation_batch in validation_set:
 
-            cuda_input = Variable( torch.from_numpy( validation_batch ) )
+            input_data = Variable( torch.from_numpy( validation_batch ) )
 
-            cuda_output = myBaseDAE( cuda_input )   
+            output_data = my_base_dae( input_data )   
 
-            loss = criterion( cuda_output, cuda_input )
+            loss = criterion( output_data, input_data )
 
             sum_validation_loss += loss.item()
             validation_iter_nb += 1

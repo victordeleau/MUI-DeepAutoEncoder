@@ -23,15 +23,15 @@ class RatingDataset(PytorchDataset):
             user_index_swap=None, item_index_swap=None,
             userId_map=None, itemId_map=None,
             index_user=None, index_item=None,
-            nb_user=None, nb_item=None ):
+            nb_user=None, nb_item=None):
 
         self.name = (name if name != None else name)
 
         self.has_been_randomized = (has_been_randomized if has_been_randomized!=None else False)
         
-        self.is_sub_dataset = (is_sub_dataset if is_sub_dataset!=None else False)
+        self._is_sub_dataset = (is_sub_dataset if is_sub_dataset!=None else False)
 
-        self.view = (view if view != None else "user_view")
+        self._view = (view if view != None else "user_view")
 
         self.iterator_count = 0
         self.column_id = None
@@ -81,16 +81,23 @@ class RatingDataset(PytorchDataset):
 
                 self.data = data      
 
+    """
+        just return the dataset's view
+    """
+    def get_view(self):
+
+        return self._view
+
 
     """
         return size of the dataset (overide required from abstract parent class)
     """
     def __len__(self):
         
-        if self.view == "item_view":
+        if self._view == "item_view":
             return self.nb_item
 
-        elif self.view == "user_view":
+        elif self._view == "user_view":
             return self.nb_user
 
         else:
@@ -104,7 +111,7 @@ class RatingDataset(PytorchDataset):
     """
     def __getitem__(self, idx):
 
-        if self.view == "item_view":
+        if self._view == "item_view":
             
             if idx < 0 or idx > self.nb_item:
                 return 0
@@ -112,7 +119,7 @@ class RatingDataset(PytorchDataset):
                 swap_idx = self.item_index_swap[idx]
                 return np.ravel( self.data[:,swap_idx].todense() )
 
-        elif self.view == "user_view":
+        elif self._view == "user_view":
             
             if idx < 0 or idx > self.nb_user:
                 return 0
@@ -122,28 +129,6 @@ class RatingDataset(PytorchDataset):
 
         else:
             return 0
-
-
-    """
-        set dataset view to either "item_view" or "user_view"
-        in practise, return user or item vector
-        input
-            new_view: "item_view" or "user_view" string
-    """
-    def set_view(self, new_view):
-
-        if new_view == "item_view":
-            self.view = "item_view"
-            self.iterator_count = 0
-            return True
-
-        elif new_view == "user_view":
-            self.view = "user_view"
-            self.iterator_count = 0
-            return True
-
-        else:
-            return False
 
 
     """
@@ -230,7 +215,7 @@ class RatingDataset(PytorchDataset):
     def __next__(self):
 
         
-        if self.view == "item_view":
+        if self._view == "item_view":
 
             self.iterator_count += 1
 
@@ -240,7 +225,7 @@ class RatingDataset(PytorchDataset):
             return self.__getitem__(self.iterator_count-1)
 
 
-        elif self.view == "user_view":
+        elif self._view == "user_view":
 
             self.iterator_count += 1
 
@@ -260,7 +245,7 @@ class RatingDataset(PytorchDataset):
         output
             tuple of two RatingDataset, subset of this
     """
-    def get_split_sets(self, split_factor=0.8):
+    def get_split_sets(self, split_factor=0.8, view=None):
 
         if split_factor >= 1 or split_factor <= 0:
             return 0
@@ -278,7 +263,8 @@ class RatingDataset(PytorchDataset):
                     user_index_swap=self.user_index_swap, item_index_swap=self.item_index_swap,
                     userId_map=self.userId_map, itemId_map=self.itemId_map,
                     index_user=self.index_user, index_item=self.index_item,
-                    nb_user=first_nb_user, nb_item=first_nb_item),
+                    nb_user=first_nb_user, nb_item=first_nb_item,
+                    view=self._view),
                     
                 RatingDataset(
                     second_dataset,
@@ -288,5 +274,6 @@ class RatingDataset(PytorchDataset):
                     user_index_swap=self.user_index_swap, item_index_swap=self.item_index_swap,
                     userId_map=self.userId_map, itemId_map=self.itemId_map,
                     index_user=self.index_user, index_item=self.index_item,
-                    nb_user=second_nb_user, nb_item=second_nb_item)
+                    nb_user=second_nb_user, nb_item=second_nb_item,
+                    view=self._view)
                 )

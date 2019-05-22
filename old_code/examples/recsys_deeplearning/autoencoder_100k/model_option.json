@@ -1,0 +1,27 @@
+{
+ "g_root_dir": "recsys_deeplearning",
+ "g_save_dir": "autoencoder_100k",
+ "g_file_name": "model_option.json",
+ "g_force_new_option": false,
+ "m_resume_training": false,
+ "mp_learning_rate": 0.005,
+ "mp_weight_decay": 0,
+ "mp_drop_prob": 0.0,
+ "mp_noise_prob": 0.0,
+ "mp_train_batch_size": 64,
+ "mp_test_batch_size": 1,
+ "mp_test_masking_rate": 0.5,
+ "mp_num_epochs": 10,
+ "mp_optimizer": "adam",
+ "mp_activation": "selu",
+ "mp_hidden_layers": [
+  128
+ ],
+ "mp_aug_step": 1,
+ "mp_aug_step_floor": false,
+ "mp_decoder_constraint": false,
+ "mp_normalize_data": true,
+ "mp_last_layer_activations": true,
+ "mp_prediction_floor": false,
+ "mp_loss_size_average": false
+}

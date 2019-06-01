@@ -19,7 +19,7 @@ from torch.utils.data.dataset import Dataset as PytorchDataset
 """
 class RatingDataset(PytorchDataset):
 
-    def __init__(self, data, name, view=None, has_been_randomized=None, is_sub_dataset=False,
+    def __init__(self, data, name, view=None, has_been_randomized=None, is_sub_dataset=False, normalize=True, is_normalized=False,
             user_index_swap=None, item_index_swap=None,
             userId_map=None, itemId_map=None,
             index_user=None, index_item=None,
@@ -63,6 +63,10 @@ class RatingDataset(PytorchDataset):
             self.user_index_swap = (np.arange(self.nb_user) if user_index_swap==None else user_index_swap)
             self.item_index_swap = (np.arange(self.nb_item) if item_index_swap==None else item_index_swap)
 
+            if normalize and not is_normalized:
+                self.normalize()
+                self.is_normalized = True
+
         else:
 
                 assert isinstance(data, sparse.csr_matrix)
@@ -79,7 +83,10 @@ class RatingDataset(PytorchDataset):
                 self.nb_user = nb_user
                 self.nb_item = nb_item
 
-                self.data = data      
+                self.data = data
+
+        self._io_size = (self.nb_item+1 if self._view == "user_view" else self.nb_user+1 )
+
 
     """
         just return the dataset's view
@@ -87,6 +94,46 @@ class RatingDataset(PytorchDataset):
     def get_view(self):
 
         return self._view
+
+
+    """
+        just return io_size (depends on view)
+    """
+    def get_io_size(self):
+
+        return self._io_size
+
+
+    def __iter__(self):
+
+        self.count = 0
+        return self
+
+
+    def __next__(self):
+
+        
+        if self._view == "item_view":
+
+            self.iterator_count += 1
+
+            if self.iterator_count > self.nb_item:
+                raise StopIteration
+
+            return self.__getitem__(self.iterator_count-1)
+
+
+        elif self._view == "user_view":
+
+            self.iterator_count += 1
+
+            if self.iterator_count > self.nb_user:
+                raise StopIteration
+
+            return self.__getitem__(self.iterator_count-1)
+
+        else:
+            return 0
 
 
     """
@@ -204,38 +251,6 @@ class RatingDataset(PytorchDataset):
         self.itemId_map = dict((str(k), v) for k, v in temp_dict.items())
 
         return df_data
-    
-
-    def __iter__(self):
-
-        self.count = 0
-        return self
-
-
-    def __next__(self):
-
-        
-        if self._view == "item_view":
-
-            self.iterator_count += 1
-
-            if self.iterator_count > self.nb_item:
-                raise StopIteration
-
-            return self.__getitem__(self.iterator_count-1)
-
-
-        elif self._view == "user_view":
-
-            self.iterator_count += 1
-
-            if self.iterator_count > self.nb_user:
-                raise StopIteration
-
-            return self.__getitem__(self.iterator_count-1)
-
-        else:
-            return 0
 
 
     """

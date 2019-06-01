@@ -140,35 +140,68 @@ class DatasetGetter(object):
         output
             a RatingDataset object containing the specified dataset
     """
-    def load_local_dataset(self, dataset_name='100k', dataset_location="data/"):
+    def load_local_dataset(self, dataset_name='100k', dataset_location="data/", view="item_view", store_as_binary=True, try_load_binary=True):
 
-        try:
+        if os.path.exists(dataset_location + dataset_name + "_" + view + "_norm.bin" ) and try_load_binary:
+
+            logging.info( "Binary dataset found. Loading ..." )
+
+            return self._load_binary_rating_dataset(
+                dataset_location + dataset_name + "_" + view + "_norm.bin"
+            )
+
+        else:
             path = dataset_location + dataset_name + ".zip"
 
-            zip_file = ZipFile( path, 'r' )
+            try:
+                os.path.exists(path)
+            except:
+                raise Exception("Local dataset not found in folder " + dataset_location)
+
+            zip_file = None
+            try:
+                zip_file = ZipFile( path, 'r' )
+            except Exception:
+                raise Exception("File is not a Zip file.")
 
             extracted_files = {name: zip_file.read(name) for name in zip_file.namelist()}
 
-            rating_file = extracted_files[ self._dataset_info[dataset_name].filename.split('.')[0] + '/' + self._dataset_info[dataset_name].rating_file ]
+            rating_file = None
+            try:
+                rating_file = extracted_files[ self._dataset_info[dataset_name].filename.split('.')[0] + '/' + self._dataset_info[dataset_name].rating_file ]
+            except Exception:
+                raise Exception("Data file not found in Zip archive.")
 
-            df_data = pd.read_csv(
-                StringIO( str(rating_file,'utf-8') ),
-                sep=self._dataset_info[dataset_name].delimiter
-            )
+            df_data = None
+            try:
+                df_data = pd.read_csv(
+                    StringIO( str(rating_file,'utf-8') ),
+                    sep=self._dataset_info[dataset_name].delimiter
+                )
+            except Exception:
+                raise Exception("Data file is not a .csv file.")
 
             if self._dataset_info[dataset_name].rename_column != None:
-                df_data = df_data.rename(index=str, columns=self._dataset_info[dataset_name].rename_column)
+                try:
+                    df_data = df_data.rename(index=str, columns=self._dataset_info[dataset_name].rename_column)
+                except Exception:
+                    raise Exception("Provided column to rename not found.")
 
             if self._dataset_info[dataset_name].keep_column != None:
-                df_data = df_data[["userId","itemId","rating"]]
+                try:
+                    df_data = df_data[["userId","itemId","rating"]]
+                except:
+                    raise Exception("One or more provided column name to keep not found.")
 
-            dataset = RatingDataset(df_data, name=dataset_name)
+            dataset = RatingDataset(df_data, name=dataset_name, view=view)
+
+            if store_as_binary:
+                self._store_rating_dataset_as_binary(
+                    dataset,
+                    dataset_location + dataset_name + "_" + view + "_norm.bin"
+                )    
 
             return dataset
-
-        except Exception as e: 
-            sys.out.println("Error while loading local dataset.")
-            raise e
 
 
     """
@@ -183,23 +216,31 @@ class DatasetGetter(object):
             a DataLoader object
 
     """
-    def get_dataset_loader(self, dataset, redux=1, batch_size=1, nb_worker=4, shuffle=True):
+    def get_dataset_loader(self, dataset, batch_size=1, nb_worker=4, shuffle=True):
 
-        if redux != 1 and shuffle:
-            raise Exception("redux is mutually exclusive with shuffle.")
-
-        indices = torch.randperm(len(dataset))
-        size = math.floor( len(dataset) * redux )
-        reduced_indices = indices[:len(indices)-size][:size]
+        if not isinstance(dataset, RatingDataset):
+            raise Exception("Provided dataset is not a RatingDataset object")
 
         dataset_loader = torch.utils.data.DataLoader(
             dataset,
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=nb_worker,
-            sampler=SubsetRandomSampler(reduced_indices)
+            #sampler=SubsetRandomSampler(reduced_indices)
         )
 
         return dataset_loader
 
+    
+    def _store_rating_dataset_as_binary(self, dataset, path):
 
+        with open(path, 'wb') as f:
+            pickle.dump(dataset, f)
+
+
+    def _load_binary_rating_dataset(self, path):
+
+        with open(path, 'rb') as f:
+            dataset = pickle.load(f)
+
+        return dataset

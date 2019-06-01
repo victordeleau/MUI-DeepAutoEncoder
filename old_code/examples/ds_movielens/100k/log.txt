@@ -24,3 +24,23 @@ DEBUG:03/29-14:19:52:Already processed rating mean 100k, skip.
 DEBUG:03/29-14:19:52:Processed dataset 100k...
 DEBUG:03/29-14:19:58:epoch:0, RMSE:0.8977441384472834, total_lost:8.05944538116455, denom:10.0
 DEBUG:03/29-14:20:05:epoch:1, RMSE:0.9837260483779097, total_lost:19.354338765144348, denom:20.0
+DEBUG:05/31-12:34:29:file: ml-latest-small.zip existed, skip download
+DEBUG:05/31-12:34:29:Unzipping ds_movielens/100k/raw/ml-latest-small.zip
+DEBUG:05/31-12:34:29:Already mapped dataset 100k, skip.
+DEBUG:05/31-12:34:29:Already processed user mean 100k, skip.
+DEBUG:05/31-12:34:29:Already processed movie mean 100k, skip.
+DEBUG:05/31-12:34:29:Already processed rating mean 100k, skip.
+DEBUG:05/31-12:34:29:Processed dataset 100k...
+DEBUG:05/31-12:34:37:epoch:0, RMSE:0.9016112917650362, total_lost:8.129029214382172, denom:10.0
+DEBUG:05/31-12:34:44:epoch:1, RMSE:0.9837108990727903, total_lost:19.35374265909195, denom:20.0
+DEBUG:05/31-12:34:52:epoch:2, RMSE:1.0837315701622947, total_lost:35.23422348499298, denom:30.0
+DEBUG:05/31-12:34:58:epoch:3, RMSE:1.0863305029076615, total_lost:47.204558461904526, denom:40.0
+DEBUG:05/31-12:35:06:epoch:4, RMSE:1.0214864983910397, total_lost:52.17173331975937, denom:50.0
+DEBUG:05/31-12:35:13:epoch:5, RMSE:0.9652253015560779, total_lost:55.89959296584129, denom:60.0
+DEBUG:05/31-12:35:20:epoch:6, RMSE:0.9181877687748491, total_lost:59.014814510941505, denom:70.0
+DEBUG:05/31-12:35:27:epoch:7, RMSE:0.8777628084431885, total_lost:61.63740383088589, denom:80.0
+DEBUG:05/31-12:35:34:epoch:8, RMSE:0.844795882382675, total_lost:64.23120746016502, denom:90.0
+DEBUG:05/31-12:35:42:epoch:9, RMSE:0.8141635367135828, total_lost:66.28622645139694, denom:100.0
+INFO:05/31-12:35:42:Learn in: 72.95286669500274 seconds
+INFO:05/31-12:35:42:load model:recsys_deeplearning/autoencoder_100k/movielens_100k_preds.txt.model
+INFO:05/31-12:36:23:RMSE 1.0393125579975226

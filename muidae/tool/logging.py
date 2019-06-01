@@ -27,7 +27,7 @@ def set_logging(logFilePath="/mnt/ramdisk/", logFileName=None, loggingLevel=logg
         fh = logging.FileHandler( logFilePath + logFileName )
         fh.setLevel(loggingLevel)
         root.addHandler(fh)
-        logging.info("Logging level %s to file %s" %(loggingLevel, logFilePath + logFileName) )
+        #logging.info("Logging level %s to file %s" %(loggingLevel, logFilePath + logFileName) )
     except:
         logging.error("Couln't create log file %s" %(logFilePath + logFileName) )
 

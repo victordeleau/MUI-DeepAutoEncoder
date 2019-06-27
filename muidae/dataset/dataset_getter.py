@@ -94,7 +94,7 @@ class DatasetGetter(object):
     """
         download specified dataset from the network
     """
-    def download_dataset(self, dataset_name="100k", dataset_location="../data/" ):
+    def download_dataset(self, dataset_name="100k", dataset_location="data/" ):
 
         cnt = 0
         downloaded = False
@@ -143,8 +143,6 @@ class DatasetGetter(object):
     def load_local_dataset(self, dataset_name='100k', dataset_location="data/", view="item_view", store_as_binary=True, try_load_binary=True):
 
         if os.path.exists(dataset_location + dataset_name + "_" + view + "_norm.bin" ) and try_load_binary:
-
-            logging.info( "Binary dataset found. Loading ..." )
 
             return self._load_binary_rating_dataset(
                 dataset_location + dataset_name + "_" + view + "_norm.bin"

@@ -10,6 +10,7 @@ import numpy as np
 from torch.autograd import Variable
 import gc
 import psutil
+import logging
 
 from tool.logging import set_logging
 from tool.metering import get_object_size, get_rmse
@@ -21,7 +22,7 @@ from model.base_dae import BaseDAE
 if __name__ == "__main__":
 
     args = parse()
-    logging = set_logging()
+    logging = set_logging(logging_level=(logging.DEBUG if args.debug else logging.INFO))
     logging.info("Mixed User Item Deep Auto Encoder (MUI-DAE) demo")
 
     dataset_getter = DatasetGetter()
@@ -73,12 +74,12 @@ if __name__ == "__main__":
 
     optimizer = torch.optim.Adam( my_base_dae.parameters(), lr=args.learning_rate, weight_decay=args.regularization )
     
-    nb_training_sample = math.floor(args.redux * nb_training_example)
-    nb_validation_sample = math.floor(args.redux * nb_validation_example)
+    nb_training_sample_to_process = math.floor(args.redux * nb_training_example)
+    nb_validation_sample_to_process = math.floor(args.redux * nb_validation_example)
     #nb_testing_sample = math.floor(args.redux * nb_testing_example)
 
-    nb_training_iter = math.ceil(nb_training_sample / args.batch_size)
-    nb_validation_iter = math.ceil(nb_validation_sample / args.batch_size)
+    nb_training_iter = math.ceil(nb_training_sample_to_process / args.batch_size)
+    nb_validation_iter = math.ceil(nb_validation_sample_to_process / args.batch_size)
     #nb_testing_iter = np.ceil(nb_testing_sample / args.batch_size)
 
     logging.info("Training has started.")
@@ -86,7 +87,7 @@ if __name__ == "__main__":
     for epoch in range(args.nb_epoch):
 
         my_base_dae.train()
-        training_iter_nb, sum_training_loss = 0, 0
+        sum_training_loss = 0
 
         for i in range(nb_training_iter):
 
@@ -95,9 +96,6 @@ if __name__ == "__main__":
             input_data = Variable( torch.Tensor( np.squeeze( np.stack( training_batch ) ) ) )
 
             output_data = my_base_dae( input_data )
-
-            print(input_data)
-            print(output_data)
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
@@ -108,11 +106,11 @@ if __name__ == "__main__":
             optimizer.step()
 
             sum_training_loss += mmse_loss.item()
-            print(sum_training_loss)
-            training_iter_nb += 1
+
+            logging.debug("Training loss %0.6f" %(mmse_loss.item() / args.batch_size) )
 
         my_base_dae.eval()
-        validation_iter_nb, sum_validation_loss = 0, 0
+        sum_validation_loss = 0
 
         for i in range(nb_validation_iter):
 
@@ -125,16 +123,15 @@ if __name__ == "__main__":
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
             sum_validation_loss += mmse_loss.item()
-            validation_iter_nb += 1
+
+            logging.debug("Validation loss %0.6f" %(mmse_loss.item() / args.batch_size) )
 
         logging.info('epoch [{}/{}], training rmse:{:.6f}, validation rmse:{:.6f}'.format(
             epoch + 1,
             args.nb_epoch,
-            math.sqrt(sum_training_loss/training_iter_nb),
-            math.sqrt(sum_validation_loss/validation_iter_nb))
-        )
+            math.sqrt(sum_training_loss/nb_training_sample_to_process),
+            math.sqrt(sum_validation_loss/nb_validation_sample_to_process)))
 
         sum_training_loss, sum_validation_loss = 0, 0
-        training_iter_nb, validation_iter_nb = 0, 0
 
     #torch.save(model.state_dict(), './sim_autoencoder.pth')

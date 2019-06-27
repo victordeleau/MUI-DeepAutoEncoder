@@ -143,9 +143,9 @@ class BaseDAE(nn.Module):
 
         if not data_is_normalized:
 
-            mask_data = input_data != 0.0
-            nb_rating = torch.sum( mask_data )
-            loss = mmse_criterion( input_data * mask_data.float(), output_data ) / nb_rating
+            mask = input_data != 0.0
+            nb_rating = torch.sum( mask )
+            loss = mmse_criterion( input_data, output_data * mask.float() ) / nb_rating
 
         else:
 

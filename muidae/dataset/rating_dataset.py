@@ -27,7 +27,7 @@ class RatingDataset(PytorchDataset):
 
     # pass normalization data to sub-dataset
 
-    def __init__(self, data, name, view="user_view", is_randomized=False, is_sub_dataset=False, is_normalized=False, normalize=True,
+    def __init__(self, data, name, view="user_view", is_randomized=False, is_sub_dataset=False, is_normalized=False,
             gm=None, um=None, im=None,
             user_index_swap=None, item_index_swap=None,
             userId_map=None, itemId_map=None,
@@ -77,10 +77,6 @@ class RatingDataset(PytorchDataset):
 
             self.user_index_swap = (np.arange(self.nb_user) if user_index_swap==None else user_index_swap)
             self.item_index_swap = (np.arange(self.nb_item) if item_index_swap==None else item_index_swap)
-
-            if normalize and not self._is_normalized:
-                self.normalize()
-                self._is_normalized = True
 
             print("\nretrieve")
             print( self.data[1,:].todense() )

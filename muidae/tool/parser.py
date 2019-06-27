@@ -18,6 +18,7 @@ def parse():
     parser.add_argument('--zsize', type=int, default=16, help='Number of neurons in the middle layer')
     parser.add_argument('--reload_dataset', type=bool, default=False, help='Completely reload (and rewrite as binary) the dataset or not')
     parser.add_argument('--debug', help='Display debugging information.', action="store_true")
+    parser.add_argument('--normalize', help='Remove global, user, and item mean from dataset.', action="store_true")
 
     args = parser.parse_args()
 

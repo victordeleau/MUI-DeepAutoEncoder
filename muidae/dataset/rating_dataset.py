@@ -182,7 +182,10 @@ class RatingDataset(PytorchDataset):
                 return 0
             else:
                 swap_idx = self.item_index_swap[idx]
-                return np.ravel( self.data[:, swap_idx].todense() - (self.gm + self.um + self.im[swap_idx])  )
+
+                # - (self.gm + self.um + self.im[swap_idx])  )
+
+                return np.ravel( self.data[:, swap_idx].todense())
 
         elif self._view == "user_view":
             
@@ -194,9 +197,7 @@ class RatingDataset(PytorchDataset):
                 #tmp = self.data[1, swap_idx].todense()
                 #bias = (self.gm + self.um[swap_idx] + self.im)
 
-                output = self.data[swap_idx, :].todense() - (self.gm + self.um[swap_idx] + self.im)
-
-                return output
+                return np.ravel( self.data[swap_idx, :].todense())
 
         else:
             return 0

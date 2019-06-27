@@ -38,24 +38,6 @@ if __name__ == "__main__":
     #nb_testing_example = (testing_set.nb_item if testing_set.get_view() == "item_view" else testing_set.nb_user)
     nb_testing_example = None
 
-    """training_loader = dataset_getter.get_dataset_loader(
-        training_set,
-        batch_size=args.batch_size,
-        nb_worker=3,
-        shuffle=False)
-
-    validation_loader = dataset_getter.get_dataset_loader(
-        validation_set,
-        batch_size=args.batch_size,
-        nb_worker=3,
-        shuffle=False)
-
-    testing_loader = dataset_getter.get_dataset_loader(
-        testing_set,
-        batch_size=args.batch_size,
-        nb_worker=3,
-        shuffle=False)"""
-
     my_base_dae = BaseDAE(
         io_size=dataset.get_io_size(),
         z_size=args.zsize,
@@ -89,24 +71,33 @@ if __name__ == "__main__":
         device = torch.device('cpu')
         logging.info("No Cuda device available, using CPU")    
 
-    logging.info("Training has started.")
-
     optimizer = torch.optim.Adam( my_base_dae.parameters(), lr=args.learning_rate, weight_decay=args.regularization )
-    sum_training_loss, sum_validation_loss = 0.0, 0.0
-
+    
     nb_training_sample = math.floor(args.redux * nb_training_example)
     nb_validation_sample = math.floor(args.redux * nb_validation_example)
-    
+    #nb_testing_sample = math.floor(args.redux * nb_testing_example)
+
+    nb_training_iter = math.ceil(nb_training_sample / args.batch_size)
+    nb_validation_iter = math.ceil(nb_validation_sample / args.batch_size)
+    #nb_testing_iter = np.ceil(nb_testing_sample / args.batch_size)
+
+    logging.info("Training has started.")
+
     for epoch in range(args.nb_epoch):
 
         my_base_dae.train()
         training_iter_nb, sum_training_loss = 0, 0
 
-        for i in range(nb_training_sample):
+        for i in range(nb_training_iter):
 
-            input_data = Variable( torch.Tensor( training_dataset[i] ) )
+            training_batch = [training_dataset[i*args.batch_size+j] for j in range(args.batch_size)]
+
+            input_data = Variable( torch.Tensor( np.squeeze( np.stack( training_batch ) ) ) )
 
             output_data = my_base_dae( input_data )
+
+            print(input_data)
+            print(output_data)
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
@@ -117,14 +108,17 @@ if __name__ == "__main__":
             optimizer.step()
 
             sum_training_loss += mmse_loss.item()
+            print(sum_training_loss)
             training_iter_nb += 1
 
         my_base_dae.eval()
         validation_iter_nb, sum_validation_loss = 0, 0
 
-        for i in range(nb_validation_sample):
+        for i in range(nb_validation_iter):
 
-            input_data = Variable( torch.Tensor( validation_dataset[i] ) )
+            validation_batch = [validation_dataset[i*args.batch_size+j] for j in range(args.batch_size)]
+
+            input_data = Variable( torch.Tensor( np.squeeze( np.stack( validation_batch ) ) ) )
 
             output_data = my_base_dae( input_data )
 

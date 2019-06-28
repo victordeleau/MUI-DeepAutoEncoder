@@ -11,6 +11,7 @@ from torch.autograd import Variable
 import gc
 import psutil
 import logging
+import time
 
 from tool.logging import set_logging, display_info
 from tool.metering import get_object_size, get_rmse
@@ -70,7 +71,11 @@ if __name__ == "__main__":
 
     log.info("Training has started.")
 
+    total_time_start = time.time()
+
     for epoch in range(args.nb_epoch):
+
+        epoch_time_start = time.time()
 
         my_base_dae.to(device)
         my_base_dae.train()
@@ -84,9 +89,9 @@ if __name__ == "__main__":
 
             training_batch = [training_dataset[i*args.batch_size+j] for j in range(remaining)]
 
-            input_data = Variable( torch.Tensor( np.squeeze( np.stack( training_batch ) ) ) )
+            input_data = Variable( torch.Tensor( np.squeeze( np.stack( training_batch ) ) ) ).to(device)
 
-            output_data = my_base_dae( input_data.to(device) )
+            output_data = my_base_dae( input_data )
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
@@ -121,12 +126,15 @@ if __name__ == "__main__":
 
             log.debug("Validation loss %0.6f" %(mmse_loss.item() / remaining) )
 
-        log.info('epoch [{}/{}], training rmse:{:.6f}, validation rmse:{:.6f}'.format(
+        log.info('epoch [{}/{}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.6f}s'.format(
             epoch + 1,
             args.nb_epoch,
             math.sqrt(sum_training_loss/nb_training_iter),
-            math.sqrt(sum_validation_loss/nb_validation_iter)))
+            math.sqrt(sum_validation_loss/nb_validation_iter),
+            time.time() - epoch_time_start))
 
         sum_training_loss, sum_validation_loss = 0, 0
+
+    logging.info("Total training time of %0.6f" %(time.time() - total_time_start) )
 
     #torch.save(model.state_dict(), './sim_autoencoder.pth')

@@ -108,6 +108,9 @@ class DatasetGetter(object):
         if not downloaded:
             raise Exception("Was not able to download the dataset after 3 tentatives.")
 
+        if not os.path.exists(dataset_location):
+            os.mkdir(dataset_location)
+
         with open(dataset_location + dataset_name + ".zip", 'wb') as f:
             f.write(res.content)
 
@@ -223,9 +226,7 @@ class DatasetGetter(object):
             dataset,
             batch_size=batch_size,
             shuffle=shuffle,
-            num_workers=nb_worker,
-            #sampler=SubsetRandomSampler(reduced_indices)
-        )
+            num_workers=nb_worker,)
 
         return dataset_loader
 

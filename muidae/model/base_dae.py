@@ -137,20 +137,13 @@ class BaseDAE(nn.Module):
             data_is_normalized: boolean
         
     """
-    def get_mmse_loss(self, input_data, output_data, data_is_normalized=False):
+    def get_mmse_loss(self, input_data, output_data):
 
         mmse_criterion = nn.MSELoss(reduction='sum')
 
-        if not data_is_normalized:
-
-            mask = input_data != 0.0
-            nb_rating = torch.sum( mask )
-            loss = mmse_criterion( input_data, output_data * mask.float() ) / nb_rating
-
-        else:
-
-            nb_rating = np.prod( input_data.shape )
-            loss = mmse_criterion( input_data, output_data ) / nb_rating
+        mask = input_data != 0.0
+        nb_rating = torch.sum( mask )
+        loss = mmse_criterion( input_data, output_data * mask.float() ) / nb_rating
 
         return loss
 

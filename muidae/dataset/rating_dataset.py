@@ -13,7 +13,7 @@ from random import shuffle
 from torch.utils.data.dataset import Dataset as PytorchDataset
 
 # TODO remove first row and column from data (nan, possibly text or something)
-np.set_printoptions(threshold=sys.maxsize)
+#np.set_printoptions(threshold=sys.maxsize)
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 
@@ -176,24 +176,27 @@ class RatingDataset(PytorchDataset):
             
             if idx < 0 or idx > self.nb_item:
                 return 0
+
             else:
                 swap_idx = self.item_index_swap[idx]
+                data = self.data[:, swap_idx].todense()
+                mask = data != 0.0
+                bias = self.gm + self.um + self.im[swap_idx]
 
-                # - (self.gm + self.um + self.im[swap_idx])  )
-
-                return np.ravel( self.data[:, swap_idx].todense())
+                return np.ravel( data - np.multiply(bias,mask) )
 
         elif self._view == "user_view":
             
             if idx < 0 or idx > self.nb_user:
                 return 0
+
             else:
                 swap_idx = self.user_index_swap[idx]
-                
-                #tmp = self.data[1, swap_idx].todense()
-                #bias = (self.gm + self.um[swap_idx] + self.im)
+                data = self.data[swap_idx, :].todense()
+                mask = data != 0.0
+                bias = self.gm + self.um[swap_idx] + self.im
 
-                return np.ravel( self.data[swap_idx, :].todense())
+                return np.ravel( data - np.multiply(bias,mask) )
 
         else:
             return 0
@@ -213,13 +216,20 @@ class RatingDataset(PytorchDataset):
         self.gm, self.um, self.im = 0, [], []
 
         if global_mean == True:
+
             self.gm = self.data.sum() / self.data.getnnz()
 
         if user_mean == True:
-            self.um = np.divide( np.ravel( np.transpose( self.data.sum(axis=1) ) ).astype(float), self.data.getnnz(axis=1) )
+
+            um_sum = np.ravel( np.transpose( self.data.sum(axis=1) ) )
+            um_nnz = self.data.getnnz(axis=1)
+            self.um = np.divide( um_sum.astype(float), um_nnz, out=np.zeros_like(um_sum), where=um_nnz!=0 ) - self.gm
         
         if item_mean == True:
-            self.im = np.ravel( np.divide( self.data.sum(axis=0).astype(float), self.data.getnnz(axis=0) ) )
+            
+            im_sum = self.data.sum(axis=0)
+            im_nnz = self.data.getnnz(axis=0)
+            self.im = np.ravel( np.divide( im_sum.astype(float), im_nnz, out=np.zeros_like(im_sum), where=im_nnz!=0 ) ) - self.gm
 
 
     """

@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
             output_data = my_base_dae( input_data )
 
-            mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data, data_is_normalized=False)
+            mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
             optimizer.zero_grad()
 
@@ -107,7 +107,7 @@ if __name__ == "__main__":
 
             output_data = my_base_dae( input_data )
 
-            mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data, data_is_normalized=False)
+            mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
             sum_validation_loss += mmse_loss.item()
 

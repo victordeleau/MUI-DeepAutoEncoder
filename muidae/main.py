@@ -90,11 +90,11 @@ if __name__ == "__main__":
                 remaining = (args.batch_size 
                     if (i+1)*args.batch_size < nb_training_sample_to_process
                     else nb_training_sample_to_process-(i*args.batch_size) )
-                training_batch = [training_dataset[i*args.batch_size+j] for j in range(remaining)]
+                training_batch = np.stack([training_dataset[i*args.batch_size+j] for j in range(remaining)])
 
-            input_data = Variable( torch.Tensor( np.squeeze( np.stack( training_batch ) ) ) ).to(device)
+            input_data = Variable(torch.Tensor(np.squeeze(training_batch))).to(device)
 
-            output_data = my_base_dae( input_data )
+            output_data = my_base_dae(input_data)
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
@@ -113,15 +113,18 @@ if __name__ == "__main__":
 
         for i in range(nb_validation_iter):
 
-            remaining = (args.batch_size 
-                if (i+1)*args.batch_size < nb_validation_sample_to_process
-                else nb_validation_sample_to_process-(i*args.batch_size) )
+            if args.batch_size == 1:
+                validation_batch, remaining = validation_dataset[i], 1
 
-            validation_batch = [validation_dataset[i*args.batch_size+j] for j in range(remaining)]
+            else:
+                remaining = (args.batch_size 
+                    if (i+1)*args.batch_size < nb_validation_sample_to_process
+                    else nb_validation_sample_to_process-(i*args.batch_size) )    
+                validation_batch = np.stack([validation_dataset[i*args.batch_size+j] for j in range(remaining)])
 
-            input_data = Variable( torch.Tensor( np.squeeze( np.stack( validation_batch ) ) ) ).to(device)
+            input_data = Variable(torch.Tensor(np.squeeze(validation_batch))).to(device)
 
-            output_data = my_base_dae( input_data )
+            output_data = my_base_dae(input_data)
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 

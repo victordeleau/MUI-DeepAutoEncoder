@@ -83,11 +83,14 @@ if __name__ == "__main__":
 
         for i in range(nb_training_iter):
 
-            remaining = (args.batch_size 
-                if (i+1)*args.batch_size < nb_training_sample_to_process
-                else nb_training_sample_to_process-(i*args.batch_size) )
+            if args.batch_size == 1:
+                training_batch, remaining = training_dataset[i], 1
 
-            training_batch = [training_dataset[i*args.batch_size+j] for j in range(remaining)]
+            else:
+                remaining = (args.batch_size 
+                    if (i+1)*args.batch_size < nb_training_sample_to_process
+                    else nb_training_sample_to_process-(i*args.batch_size) )
+                training_batch = [training_dataset[i*args.batch_size+j] for j in range(remaining)]
 
             input_data = Variable( torch.Tensor( np.squeeze( np.stack( training_batch ) ) ) ).to(device)
 
@@ -126,7 +129,7 @@ if __name__ == "__main__":
 
             log.debug("Validation loss %0.6f" %(mmse_loss.item() / remaining) )
 
-        log.info('epoch [{}/{}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.6f}s'.format(
+        log.info('epoch [{}/{}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.2f}s'.format(
             epoch + 1,
             args.nb_epoch,
             math.sqrt(sum_training_loss/nb_training_iter),
@@ -135,6 +138,6 @@ if __name__ == "__main__":
 
         sum_training_loss, sum_validation_loss = 0, 0
 
-    logging.info("Total training time of %0.6f" %(time.time() - total_time_start) )
+    logging.info("Total training time of %0.2f" %(time.time() - total_time_start) )
 
     #torch.save(model.state_dict(), './sim_autoencoder.pth')

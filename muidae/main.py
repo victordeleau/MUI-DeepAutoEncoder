@@ -49,7 +49,14 @@ if __name__ == "__main__":
         nb_input_layer=args.nb_layer,
         nb_output_layer=args.nb_layer)
 
-    display_info(args, dataset)  
+    display_info(args, dataset)
+
+    use_gpu = torch.cuda.is_available()
+    if use_gpu:
+        logging.info("Cuda available, loading GPU device")
+    else:
+        logging.info("No Cuda device available, using CPU") 
+    device = torch.device("cuda:0" if use_gpu else "cpu")
 
     optimizer = torch.optim.Adam( my_base_dae.parameters(), lr=args.learning_rate, weight_decay=args.regularization )
     
@@ -65,6 +72,7 @@ if __name__ == "__main__":
 
     for epoch in range(args.nb_epoch):
 
+        my_base_dae.to(device)
         my_base_dae.train()
         sum_training_loss = 0
 
@@ -78,7 +86,7 @@ if __name__ == "__main__":
 
             input_data = Variable( torch.Tensor( np.squeeze( np.stack( training_batch ) ) ) )
 
-            output_data = my_base_dae( input_data )
+            output_data = my_base_dae( input_data.to(device) )
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
@@ -105,7 +113,7 @@ if __name__ == "__main__":
 
             input_data = Variable( torch.Tensor( np.squeeze( np.stack( validation_batch ) ) ) )
 
-            output_data = my_base_dae( input_data )
+            output_data = my_base_dae( input_data.to(device) )
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 

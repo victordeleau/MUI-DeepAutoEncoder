@@ -128,6 +128,27 @@ class BaseDAE(nn.Module):
             
             m.bias.data.fill_(0)
 
+    """
+        compute mask mean square error (mmse) and return loss
+        use a mask if data is not normalized
+        input
+            input_data
+            output_data
+            data_is_normalized: boolean
+        
+    """
+    def get_mmse_loss(self, input_data, output_data):
+
+        mmse_criterion = nn.MSELoss(reduction='sum')
+
+        mask = input_data != 0.0
+        nb_rating = torch.sum( mask )
+        loss = mmse_criterion( input_data, output_data * mask.float() ) / nb_rating
+
+        return loss
+
+
+
 
     """def activation(self, input, kind):
         if kind == 'selu':

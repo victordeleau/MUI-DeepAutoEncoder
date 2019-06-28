@@ -143,7 +143,7 @@ class BaseDAE(nn.Module):
 
         mask = input_data != 0.0
         nb_rating = torch.sum( mask )
-        loss = mmse_criterion( input_data, output_data * mask.float() ) / nb_rating
+        loss = mmse_criterion( input_data, output_data * mask.float() ) / nb_rating.float()
 
         return loss
 

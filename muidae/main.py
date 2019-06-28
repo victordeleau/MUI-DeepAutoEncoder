@@ -116,9 +116,9 @@ if __name__ == "__main__":
 
             validation_batch = [validation_dataset[i*args.batch_size+j] for j in range(remaining)]
 
-            input_data = Variable( torch.Tensor( np.squeeze( np.stack( validation_batch ) ) ) )
+            input_data = Variable( torch.Tensor( np.squeeze( np.stack( validation_batch ) ) ) ).to(device)
 
-            output_data = my_base_dae( input_data.to(device) )
+            output_data = my_base_dae( input_data )
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 

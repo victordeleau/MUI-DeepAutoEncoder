@@ -27,7 +27,7 @@ class RatingDataset(PytorchDataset):
 
     # pass normalization data to sub-dataset
 
-    def __init__(self, data, name, view="user_view", is_randomized=False, is_sub_dataset=False, is_normalized=False,
+    def __init__(self, data, name, view="user", is_randomized=False, is_sub_dataset=False, is_normalized=False,
             gm=None, um=None, im=None,
             user_index_swap=None, item_index_swap=None,
             userId_map=None, itemId_map=None,
@@ -52,13 +52,7 @@ class RatingDataset(PytorchDataset):
         
             self.userId_map, self.itemId_map = None, None
 
-            print("\ndf not monotonic")
-            print(data)
-
             data = self._map_index_to_monotonic(data)
-
-            print("\ndf monotonic")
-            print(data)
 
             self.data = sparse.csr_matrix(
                 (
@@ -68,18 +62,12 @@ class RatingDataset(PytorchDataset):
                 )
             )
 
-            print("\nsparse")
-            print(self.data)
-
             self.index_user, self.index_item = data.userId.unique(), data.itemId.unique()
 
             self.nb_user, self.nb_item = len( self.index_user ), len( self.index_item )
 
             self.user_index_swap = (np.arange(self.nb_user) if user_index_swap==None else user_index_swap)
             self.item_index_swap = (np.arange(self.nb_item) if item_index_swap==None else item_index_swap)
-
-            print("\nretrieve")
-            print( self.data[1,:].todense() )
 
             # when accessing data from sparse matrix, data[ item_index, user_index ]
 
@@ -99,7 +87,7 @@ class RatingDataset(PytorchDataset):
 
             self.data = data
 
-        self._io_size = (self.nb_item+1 if self._view == "user_view" else self.nb_user+1 )
+        self._io_size = (self.nb_item+1 if self._view == "user" else self.nb_user+1 )
 
 
     """
@@ -127,7 +115,7 @@ class RatingDataset(PytorchDataset):
     def __next__(self):
 
         
-        if self._view == "item_view":
+        if self._view == "item":
 
             self.iterator_count += 1
 
@@ -137,7 +125,7 @@ class RatingDataset(PytorchDataset):
             return self.__getitem__(self.iterator_count-1)
 
 
-        elif self._view == "user_view":
+        elif self._view == "user":
 
             self.iterator_count += 1
 
@@ -155,10 +143,10 @@ class RatingDataset(PytorchDataset):
     """
     def __len__(self):
         
-        if self._view == "item_view":
+        if self._view == "item":
             return self.nb_item
 
-        elif self._view == "user_view":
+        elif self._view == "user":
             return self.nb_user
 
         else:
@@ -172,7 +160,7 @@ class RatingDataset(PytorchDataset):
     """
     def __getitem__(self, idx):
 
-        if self._view == "item_view":
+        if self._view == "item":
             
             if idx < 0 or idx > self.nb_item:
 
@@ -186,7 +174,7 @@ class RatingDataset(PytorchDataset):
                 mask = data != 0.0
                 bias = self.gm + self.um + self.im[swap_idx]
 
-                return np.ravel( data - np.multiply(bias,mask) )
+                return np.ravel( data - np.multiply(bias,mask.transpose()).transpose() )
 
             else:
 
@@ -194,7 +182,7 @@ class RatingDataset(PytorchDataset):
 
                 return np.ravel(self.data[:, swap_idx].todense())
 
-        elif self._view == "user_view":
+        elif self._view == "user":
             
             if idx < 0 or idx > self.nb_user:
 
@@ -249,7 +237,7 @@ class RatingDataset(PytorchDataset):
             im_nnz = self.data.getnnz(axis=0)
             self.im = np.ravel( np.divide( im_sum.astype(float), im_nnz, out=np.zeros_like(im_sum), where=im_nnz!=0 ) ) - self.gm
 
-        self._is_normalize = True
+        self._is_normalized = True
 
 
     """
@@ -307,14 +295,33 @@ class RatingDataset(PytorchDataset):
         output
             tuple of two RatingDataset, subset of this
     """
-    def get_split_sets(self, split_factor=0.8, view=None):
+    def get_split_sets(self, split_factor=0.8, view="user"):
+
+        first_dataset, second_dataset = None, None
+        first_nb_user, first_nb_item = None, None
+        second_nb_user, second_nb_item = None, None
 
         if split_factor >= 1 or split_factor <= 0:
             return 0
 
-        first_dataset, second_dataset = train_test_split(self.data, test_size=1-split_factor)
-        first_nb_user, first_nb_item = math.floor( self.nb_user * split_factor), math.floor( self.nb_item * split_factor )
-        second_nb_user, second_nb_item = math.floor( self.nb_user * (1-split_factor)), math.floor( self.nb_item * (1-split_factor) )
+        if view == "user":
+            
+            first_dataset, second_dataset = train_test_split(self.data, test_size=1-split_factor)
+            first_nb_user, first_nb_item = math.floor( self.nb_user * split_factor), math.floor( self.nb_item * split_factor )
+            second_nb_user, second_nb_item = math.floor( self.nb_user * (1-split_factor)), math.floor( self.nb_item * (1-split_factor) )
+
+        elif view == "item":
+
+            tmp = self.data.transpose()
+
+            first_dataset, second_dataset = train_test_split(tmp, test_size=1-split_factor)
+            first_nb_user, first_nb_item = math.floor( self.nb_user * split_factor), math.floor( self.nb_item * split_factor )
+            second_nb_user, second_nb_item = math.floor( self.nb_user * (1-split_factor)), math.floor( self.nb_item * (1-split_factor) )
+            first_dataset, second_dataset = first_dataset.transpose().tocsr(), second_dataset.transpose().tocsr()
+            
+        else:
+            return 0
+
 
         return (
                 RatingDataset(

@@ -143,7 +143,7 @@ class DatasetGetter(object):
         output
             a RatingDataset object containing the specified dataset
     """
-    def load_local_dataset(self, dataset_name='100k', dataset_location="data/", view="item_view", store_as_binary=True, try_load_binary=True):
+    def load_local_dataset(self, dataset_name='100k', dataset_location="data/", view="item", store_as_binary=True, try_load_binary=True):
 
         if os.path.exists(dataset_location + dataset_name + "_" + view + "_norm.bin" ) and try_load_binary:
 

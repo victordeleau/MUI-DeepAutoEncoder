@@ -36,11 +36,11 @@ if __name__ == "__main__":
 
     if args.normalize: dataset.normalize()
     
-    training_and_validation_dataset, _ = dataset.get_split_sets(split_factor=0.9)
-    training_dataset, validation_dataset = training_and_validation_dataset.get_split_sets(split_factor=0.8)
+    training_and_validation_dataset, _ = dataset.get_split_sets(split_factor=0.9, view=args.view)
+    training_dataset, validation_dataset = training_and_validation_dataset.get_split_sets(split_factor=0.8, view=args.view)
     
-    nb_training_example = (training_dataset.nb_item if training_dataset.get_view() == "item_view" else training_dataset.nb_user)
-    nb_validation_example = (validation_dataset.nb_item if validation_dataset.get_view() == "item_view" else validation_dataset.nb_user)
+    nb_training_example = (training_dataset.nb_item if training_dataset.get_view() == "item" else training_dataset.nb_user)
+    nb_validation_example = (validation_dataset.nb_item if validation_dataset.get_view() == "item" else validation_dataset.nb_user)
     #nb_testing_example = (testing_set.nb_item if testing_set.get_view() == "item_view" else testing_set.nb_user)
     nb_testing_example = None
 
@@ -71,10 +71,13 @@ if __name__ == "__main__":
 
     log.info("Training has started.")
 
+    torch.set_printoptions(threshold=10000)
+
     total_time_start = time.time()
 
     for epoch in range(args.nb_epoch):
 
+        nan_count = 0
         epoch_time_start = time.time()
 
         my_base_dae.to(device)
@@ -98,15 +101,21 @@ if __name__ == "__main__":
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
+            if math.isnan( mmse_loss.item() ):
+                nan_count += 1
+                if nan_count > 3:
+                    log.error("Too many nan loss encountered, stopping.")
+                    sys.exit(0)
+            else:
+                sum_training_loss += mmse_loss.item()
+                
             optimizer.zero_grad()
 
             mmse_loss.backward()
 
             optimizer.step()
 
-            sum_training_loss += mmse_loss.item()
-
-            log.debug("Training loss %0.6f" %(mmse_loss.item() / remaining) )
+            log.debug("Training loss %0.6f" %( math.sqrt(mmse_loss.item()) ) )
 
         my_base_dae.eval()
         sum_validation_loss = 0
@@ -128,9 +137,15 @@ if __name__ == "__main__":
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
-            sum_validation_loss += mmse_loss.item()
+            if math.isnan( mmse_loss.item() ):
+                nan_count += 1
+                if nan_count > 3:
+                    log.error("Too many nan loss encountered, stopping.")
+                    sys.exit(0)
+            else:
+                sum_validation_loss += mmse_loss.item()
 
-            log.debug("Validation loss %0.6f" %(mmse_loss.item() / remaining) )
+            log.debug("Validation loss %0.6f" %( math.sqrt( mmse_loss.item() ) ) )
 
         log.info('epoch [{}/{}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.2f}s'.format(
             epoch + 1,
@@ -141,6 +156,6 @@ if __name__ == "__main__":
 
         sum_training_loss, sum_validation_loss = 0, 0
 
-    logging.info("Total training time of %0.2f" %(time.time() - total_time_start) )
+    logging.info("Total training time of %0.2f seconds" %(time.time() - total_time_start) )
 
     #torch.save(model.state_dict(), './sim_autoencoder.pth')

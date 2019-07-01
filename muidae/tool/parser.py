@@ -19,6 +19,8 @@ def parse():
     parser.add_argument('--reload_dataset', type=bool, default=False, help='Completely reload (and rewrite as binary) the dataset or not')
     parser.add_argument('--debug', help='Display debugging information.', action="store_true")
     parser.add_argument('--normalize', help='Remove global, user, and item mean from dataset.', action="store_true")
+    parser.add_argument('--max_increasing_cnt', type=int, default=2, help='Maximum number of time the new validation loss can be higher than the previous one.')
+    parser.add_argument('--max_nan_cnt', type=int, default=3, help='Maximum number of time nan is allowed to appear in the loss.')
 
     args = parser.parse_args()
 

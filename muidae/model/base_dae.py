@@ -15,9 +15,9 @@ class BaseDAE(nn.Module):
         self.z_size = z_size
         self.activation = activation
 
-        self.mode = 0 # default to train mode (1 for validation mode, 2 for test mode)
+        self.nan_count = 0
 
-        # variable length input layer #############################################################
+        self.mode = 0 # default to train mode (1 for validation mode, 2 for test mode)
 
         input_layer = []
         for i in range(nb_input_layer-1):
@@ -29,9 +29,6 @@ class BaseDAE(nn.Module):
 
         self.input_layer = nn.Sequential( *input_layer )
 
-
-        # variable length output layer #############################################################
-
         output_layer = []
         output_layer.append( nn.Linear(z_size, io_size) )
         output_layer.append( activation(True) )
@@ -41,11 +38,6 @@ class BaseDAE(nn.Module):
             output_layer.append( activation(True) )
             
         self.output_layer = nn.Sequential( *output_layer )
-
-
-        # initialize weights and biases ###########################################################
-
-        # recursive application of the provided function to any nn.Linear layer
 
         self.input_layer.apply(self.init_weight_general_rule)
         self.input_layer.apply(self.init_bias_zero)

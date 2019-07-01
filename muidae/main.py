@@ -14,7 +14,7 @@ import logging
 import time
 
 from tool.logging import set_logging, display_info
-from tool.metering import get_object_size, get_rmse
+from tool.metering import get_object_size, get_rmse, LossAnalyzer
 from tool.parser import parse
 from dataset.dataset_getter import DatasetGetter
 from model.base_dae import BaseDAE
@@ -73,16 +73,17 @@ if __name__ == "__main__":
 
     torch.set_printoptions(threshold=10000)
 
+    loss_analyzer = LossAnalyzer(args.max_increasing_cnt, args.max_nan_cnt)
     total_time_start = time.time()
 
     for epoch in range(args.nb_epoch):
 
-        nan_count = 0
+        sum_training_loss, sum_validation_loss = 0, 0
+        increasing_cnt = 0, 0
         epoch_time_start = time.time()
 
         my_base_dae.to(device)
         my_base_dae.train()
-        sum_training_loss = 0
 
         for i in range(nb_training_iter):
 
@@ -101,13 +102,7 @@ if __name__ == "__main__":
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
-            if math.isnan( mmse_loss.item() ):
-                nan_count += 1
-                if nan_count > 3:
-                    log.error("Too many nan loss encountered, stopping.")
-                    sys.exit(0)
-            else:
-                sum_training_loss += mmse_loss.item()
+            sum_training_loss += (mmse_loss.item() if not loss_analyzer.is_nan(mmse_loss.item()) else 0)
                 
             optimizer.zero_grad()
 
@@ -137,24 +132,23 @@ if __name__ == "__main__":
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
-            if math.isnan( mmse_loss.item() ):
-                nan_count += 1
-                if nan_count > 3:
-                    log.error("Too many nan loss encountered, stopping.")
-                    sys.exit(0)
-            else:
-                sum_validation_loss += mmse_loss.item()
+            sum_validation_loss += (mmse_loss.item() if not loss_analyzer.is_nan(mmse_loss.item()) else 0)
 
             log.debug("Validation loss %0.6f" %( math.sqrt( mmse_loss.item() ) ) )
+
+        training_rmse = math.sqrt(sum_training_loss/nb_training_iter)
+        validation_rmse = math.sqrt(sum_validation_loss/nb_validation_iter)
 
         log.info('epoch [{}/{}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.2f}s'.format(
             epoch + 1,
             args.nb_epoch,
-            math.sqrt(sum_training_loss/nb_training_iter),
-            math.sqrt(sum_validation_loss/nb_validation_iter),
+            training_rmse,
+            validation_rmse,
             time.time() - epoch_time_start))
 
-        sum_training_loss, sum_validation_loss = 0, 0
+        if loss_analyzer.is_minimum(validation_rmse):
+            log.info("Optimum detected with validation rmse %0.6f at epoch %d" %(loss_analyzer.previous_losses[-1], epoch+1-args.max_increasing_cnt))
+            break
 
     logging.info("Total training time of %0.2f seconds" %(time.time() - total_time_start) )
 

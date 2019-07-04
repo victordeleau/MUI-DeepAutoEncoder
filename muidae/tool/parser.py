@@ -14,7 +14,7 @@ def parse():
     parser.add_argument('--regularization', type=float, default=0.01, help='The regularization parameter')
     parser.add_argument('--nb_layer', type=int, default=2, help='Number of encoding (or decoding) layer')
     parser.add_argument('--redux', type=float, default=1.0, help='Dataset reduction factor')
-    parser.add_argument('--view', type=str, default='user_view', help='The view of the dataset ("user_view" or "item_view")')
+    parser.add_argument('--view', type=str, default='item', help='The view of the dataset ("user_view" or "item_view")')
     parser.add_argument('--zsize', type=int, default=16, help='Number of neurons in the middle layer')
     parser.add_argument('--reload_dataset', type=bool, default=False, help='Completely reload (and rewrite as binary) the dataset or not')
     parser.add_argument('--debug', help='Display debugging information.', action="store_true")

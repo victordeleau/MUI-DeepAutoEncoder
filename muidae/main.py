@@ -14,7 +14,7 @@ import logging
 import time
 
 from tool.logging import set_logging, display_info
-from tool.metering import get_object_size, get_rmse, LossAnalyzer
+from tool.metering import get_object_size, get_rmse, LossAnalyzer, GraphDrawer
 from tool.parser import parse
 from dataset.dataset_getter import DatasetGetter
 from model.base_dae import BaseDAE
@@ -71,14 +71,16 @@ if __name__ == "__main__":
 
     log.info("Training has started.")
 
-    torch.set_printoptions(threshold=10000)
-
     loss_analyzer = LossAnalyzer(args.max_increasing_cnt, args.max_nan_cnt)
+    graph_drawer = GraphDrawer()
+
     total_time_start = time.time()
+
+    training_rmses, validation_rmses = [], []
 
     for epoch in range(args.nb_epoch):
 
-        sum_training_loss, sum_validation_loss = 0, 0
+        training_loss, validation_loss = 0, 0
         increasing_cnt = 0, 0
         epoch_time_start = time.time()
 
@@ -102,7 +104,7 @@ if __name__ == "__main__":
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
-            sum_training_loss += (mmse_loss.item() if not loss_analyzer.is_nan(mmse_loss.item()) else 0)
+            training_loss += (mmse_loss.item() if not loss_analyzer.is_nan(mmse_loss.item()) else 0)
                 
             optimizer.zero_grad()
 
@@ -113,7 +115,7 @@ if __name__ == "__main__":
             log.debug("Training loss %0.6f" %( math.sqrt(mmse_loss.item()) ) )
 
         my_base_dae.eval()
-        sum_validation_loss = 0
+        validation_loss = 0
 
         for i in range(nb_validation_iter):
 
@@ -132,24 +134,27 @@ if __name__ == "__main__":
 
             mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
 
-            sum_validation_loss += (mmse_loss.item() if not loss_analyzer.is_nan(mmse_loss.item()) else 0)
+            validation_loss += (mmse_loss.item() if not loss_analyzer.is_nan(mmse_loss.item()) else 0)
 
             log.debug("Validation loss %0.6f" %( math.sqrt( mmse_loss.item() ) ) )
 
-        training_rmse = math.sqrt(sum_training_loss/nb_training_iter)
-        validation_rmse = math.sqrt(sum_validation_loss/nb_validation_iter)
+        training_rmses.append( math.sqrt(training_loss/nb_training_iter) )
+        validation_rmses.append( math.sqrt(validation_loss/nb_validation_iter) )
 
         log.info('epoch [{}/{}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.2f}s'.format(
             epoch + 1,
             args.nb_epoch,
-            training_rmse,
-            validation_rmse,
+            training_rmses[-1],
+            validation_rmses[-1],
             time.time() - epoch_time_start))
 
-        if loss_analyzer.is_minimum(validation_rmse):
+        if loss_analyzer.is_minimum(validation_rmses[-1]):
             log.info("Optimum detected with validation rmse %0.6f at epoch %d" %(loss_analyzer.previous_losses[-1], epoch+1-args.max_increasing_cnt))
             break
 
     logging.info("Total training time of %0.2f seconds" %(time.time() - total_time_start) )
+
+    graph_drawer.add( data=[ training_rmses, validation_rmses ], title="RMSE", legend=["training rmse", "validation_rmse"], display=True )
+    graph_drawer.export_to_png(idx = 0, export_path="../out/")
 
     #torch.save(model.state_dict(), './sim_autoencoder.pth')

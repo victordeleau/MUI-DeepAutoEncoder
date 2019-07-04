@@ -1,7 +1,9 @@
 # tools related to mesuring stuff
 
 import numpy as np
+import os
 import math
+import matplotlib.pyplot as plt
 
 """
     Recursively finds size of objects
@@ -99,3 +101,104 @@ class LossAnalyzer():
                 
             return True
 
+
+class GraphDrawer:
+
+    def __init__(self):
+
+        self.graph_list = []
+
+
+    def add(self, data, legend=None, title="", display=False):
+
+        self.graph_list.append(
+            {
+                "data": data,
+                "legend": legend,
+                "title": title
+            }
+        )
+
+        if display:
+            self.display(data, legend, title)
+
+
+    """
+        display provided graph, or graph in memory
+        this is not idiot proof ...
+    """
+    def display(self, data=None, legend=None, title=None, idx=None):
+
+        plot_list = []
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+
+        if idx != None:
+
+            if self.graph_list[idx]["title"] != None:
+                fig.suptitle( self.graph_list[idx]["title"] )
+
+            if isinstance( self.graph_list[idx]["legend"], list):
+                for i in range(len(self.graph_list[idx]["legend"])):
+                    plot, = ax.plot(self.graph_list[idx]["data"][i])
+                    plot_list.append( plot )
+
+                plt.legend(plot_list, self.graph_list[idx]["legend"])
+                plt.draw()
+
+            else:
+
+                plot, = plt.plot(self.graph_list[idx]["data"])
+                plt.legend(plot, self.graph_list[idx]["legend"])
+                plt.show()
+
+        else:
+
+            if isinstance(legend, list):
+
+                for i in range(len(legend)):
+                    if title != None:
+                        fig.suptitle(title)
+
+                    plot, = ax.plot(data[i])
+                    plot_list.append( plot )
+
+                plt.legend(plot_list, legend)
+                plt.show()
+
+
+    def export_to_png(self, data=None, legend=None, title=None, idx=None, export_path="out/"):
+
+        if not os.path.exists(export_path):
+            os.mkdir(export_path)
+
+        if idx != None:
+
+            data = self.graph_list[idx]["data"]
+            legend = self.graph_list[idx]["legend"]
+            title = self.graph_list[idx]["title"]
+
+        path = (export_path + title + ".png" if title != None else export_path + "figure.png")
+
+        fig = plt.figure()
+        plot_list = []
+        
+        if title != None:
+            fig.suptitle(title)
+
+        if isinstance( legend, list):
+
+            for i in range(len(legend)):
+                plot, = plt.plot(data[i])
+                plot_list.append( plot )
+
+            plt.legend(plot_list, legend)
+            fig.savefig( path )
+
+        else:
+
+            plot = plt.plot(data)
+            plt.legend(plot, legend)
+            fig.savefig( path )
+        

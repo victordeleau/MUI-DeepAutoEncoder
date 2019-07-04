@@ -14,20 +14,27 @@ import matplotlib.pyplot as plt
 def get_object_size(obj, seen=None):
     
     size = sys.getsizeof(obj)
+
     if seen is None:
         seen = set()
+
     obj_id = id(obj)
+
     if obj_id in seen:
         return 0
 
     seen.add(obj_id)
+
     if isinstance(obj, dict):
         size += sum([get_size(v, seen) for v in obj.values()])
         size += sum([get_size(k, seen) for k in obj.keys()])
+
     elif hasattr(obj, '__dict__'):
         size += get_size(obj.__dict__, seen)
+
     elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
         size += sum([get_size(i, seen) for i in obj])
+
     return size
 
 
@@ -102,22 +109,25 @@ class LossAnalyzer():
             return True
 
 
-class GraphDrawer:
+"""
+    A class to save, export and display plots
+"""
+class PlotDrawer:
 
     def __init__(self):
 
         self.graph_list = []
 
 
+    """
+        add a plot to memory
+    """
     def add(self, data, legend=None, title="", display=False):
 
-        self.graph_list.append(
-            {
+        self.graph_list.append({
                 "data": data,
                 "legend": legend,
-                "title": title
-            }
-        )
+                "title": title})
 
         if display:
             self.display(data, legend, title)
@@ -168,6 +178,9 @@ class GraphDrawer:
                 plt.show()
 
 
+    """
+        export saved or provided plots to png on disk
+    """
     def export_to_png(self, data=None, legend=None, title=None, idx=None, export_path="out/"):
 
         if not os.path.exists(export_path):
@@ -201,4 +214,3 @@ class GraphDrawer:
             plot = plt.plot(data)
             plt.legend(plot, legend)
             fig.savefig( path )
-        

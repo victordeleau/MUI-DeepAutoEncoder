@@ -188,7 +188,7 @@ class PlotDrawer:
     def export_to_png(self, data=None, legend=None, title=None, idx=None, export_path="out/"):
 
         if not os.path.exists(export_path):
-            os.mkdir(export_path)
+            os.makedirs(export_path)
 
         if idx != None:
 

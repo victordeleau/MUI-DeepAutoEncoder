@@ -141,7 +141,7 @@ def train_autoencoder(args, output_dir):
         training_rmses.append( math.sqrt(training_loss/nb_training_iter) )
         validation_rmses.append( math.sqrt(validation_loss/nb_validation_iter) )
 
-        args.log.info('epoch [{}/{}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.2f}s'.format(
+        args.log.info('epoch [{:3d}/{:3d}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.2f}s'.format(
             epoch + 1,
             args.nb_epoch,
             training_rmses[-1],

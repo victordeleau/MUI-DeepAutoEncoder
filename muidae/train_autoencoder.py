@@ -25,7 +25,7 @@ def train_autoencoder(args):
     dataset_getter = DatasetGetter()
 
     if not dataset_getter.local_dataset_found() or args.reload_dataset:
-        log.info( "Downloading dataset " + args.dataset )
+        args.log.info( "Downloading dataset " + args.dataset )
         dataset_getter.download_dataset(dataset_name=args.dataset)
 
     dataset = dataset_getter.load_local_dataset(view=args.view, try_load_binary=not args.reload_dataset)
@@ -50,9 +50,9 @@ def train_autoencoder(args):
 
     use_gpu = torch.cuda.is_available()
     if use_gpu:
-        logging.info("Cuda available, loading GPU device")
+        args.log.info("Cuda available, loading GPU device")
     else:
-        logging.info("No Cuda device available, using CPU") 
+        args.log.info("No Cuda device available, using CPU") 
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
     optimizer = torch.optim.Adam( my_base_dae.parameters(), lr=args.learning_rate, weight_decay=args.regularization )
@@ -66,7 +66,7 @@ def train_autoencoder(args):
     #nb_testing_iter = np.ceil(nb_testing_sample / args.batch_size)
 
     loss_analyzer = LossAnalyzer(args.max_increasing_cnt, args.max_nan_cnt)
-    graph_drawer = PlotDrawer()
+    plot_drawer = PlotDrawer()
 
     total_time_start = time.time()
 
@@ -106,7 +106,7 @@ def train_autoencoder(args):
 
             optimizer.step()
 
-            log.debug("Training loss %0.6f" %( math.sqrt(mmse_loss.item()) ) )
+            args.log.debug("Training loss %0.6f" %( math.sqrt(mmse_loss.item()) ) )
 
         my_base_dae.eval()
         validation_loss = 0
@@ -130,12 +130,12 @@ def train_autoencoder(args):
 
             validation_loss += (mmse_loss.item() if not loss_analyzer.is_nan(mmse_loss.item()) else 0)
 
-            log.debug("Validation loss %0.6f" %( math.sqrt( mmse_loss.item() ) ) )
+            args.log.debug("Validation loss %0.6f" %( math.sqrt( mmse_loss.item() ) ) )
 
         training_rmses.append( math.sqrt(training_loss/nb_training_iter) )
         validation_rmses.append( math.sqrt(validation_loss/nb_validation_iter) )
 
-        log.info('epoch [{}/{}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.2f}s'.format(
+        args.log.info('epoch [{}/{}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.2f}s'.format(
             epoch + 1,
             args.nb_epoch,
             training_rmses[-1],
@@ -143,7 +143,7 @@ def train_autoencoder(args):
             time.time() - epoch_time_start))
 
         if loss_analyzer.is_minimum(validation_rmses[-1]):
-            log.info("Optimum detected with validation rmse %0.6f at epoch %d" %(loss_analyzer.previous_losses[-1], epoch+1-args.max_increasing_cnt))
+            args.log.info("Optimum detected with validation rmse %0.6f at epoch %d" %(loss_analyzer.previous_losses[-1], epoch+1-args.max_increasing_cnt))
             break
 
     logging.info("Total training time of %0.2f seconds" %(time.time() - total_time_start) )
@@ -158,10 +158,10 @@ if __name__ == "__main__":
 
     args = parse()
 
-    log = set_logging(logging_level=(logging.DEBUG if args.debug else logging.INFO))
+    vars(args)["log"] = set_logging(logging_level=(logging.DEBUG if args.debug else logging.INFO))
 
-    log.info("Autoencoder trainer has started.")
+    args.log.info("Autoencoder trainer has started.")
 
-    train_autoencoder(args, display_log=True)
+    train_autoencoder(args)
 
     

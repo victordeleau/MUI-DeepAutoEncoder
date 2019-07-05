@@ -21,6 +21,7 @@ def parse():
     parser.add_argument('--normalize', help='Remove global, user, and item mean from dataset.', action="store_true")
     parser.add_argument('--max_increasing_cnt', type=int, default=2, help='Maximum number of time the new validation loss can be higher than the previous one.')
     parser.add_argument('--max_nan_cnt', type=int, default=3, help='Maximum number of time nan is allowed to appear in the loss.')
+    parser.add_argument('--mode', type=int, default=0, help='MUIDAE training mode [0, 1, 2, 3]')
 
     args = parser.parse_args()
 

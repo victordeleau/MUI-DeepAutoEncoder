@@ -3,6 +3,7 @@
 import numpy as np
 import os
 import math
+import json
 import matplotlib.pyplot as plt
 
 """
@@ -71,6 +72,9 @@ class LossAnalyzer():
 
 
     def is_minimum(self, loss):
+
+        if self.max_increasing_cnt == 0:
+            return False
 
         loss_to_compare = loss
 
@@ -214,3 +218,17 @@ class PlotDrawer:
             plot = plt.plot(data)
             plt.legend(plot, legend)
             fig.savefig( path )
+
+
+def export_parameters_to_json(args, output_dir):
+
+    d = vars(args)
+    del d['log']
+
+    content = json.dumps(d)
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    with open(output_dir + "/training_parameters.json", 'w+') as f:
+        f.write(content)

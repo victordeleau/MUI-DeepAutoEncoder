@@ -45,7 +45,6 @@ class BaseDAE(nn.Module):
         self.output_layer.apply(self.init_weight_general_rule)
         self.output_layer.apply(self.init_bias_zero)
 
-        
 
     """
         apply forward pass to input vector x
@@ -163,6 +162,3 @@ class BaseDAE(nn.Module):
             return input
         else:
             raise ValueError('Unknown activation function')"""
-
-
-

@@ -4,7 +4,7 @@ import logging
 from train_autoencoder import train_autoencoder
 from tool.parser import parse
 from tool.logging import set_logging
-
+from tool.date import get_day_month_year_hour_minute_second
 
 
 """
@@ -12,7 +12,9 @@ from tool.logging import set_logging
 """
 def user_or_item_ae(args):
 
-    train_autoencoder(args)
+    output_dir = "../out/autoencoder_training_" + get_day_month_year_hour_minute_second()
+
+    train_autoencoder(args, output_dir)
 
 
 """
@@ -62,7 +64,7 @@ def pyramidal_joint_ae(args):
         pass
 
     # combine those different z size item view
-    
+
 
 if __name__=="__main__":
 

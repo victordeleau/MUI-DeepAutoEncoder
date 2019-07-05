@@ -12,15 +12,17 @@ import gc
 import psutil
 import logging
 import time
+import json
 
 from tool.logging import set_logging, display_info
-from tool.metering import get_object_size, get_rmse, LossAnalyzer, PlotDrawer
+from tool.metering import get_object_size, get_rmse, LossAnalyzer, PlotDrawer, export_parameters_to_json
 from tool.parser import parse
+from tool.date import get_day_month_year_hour_minute_second
 from dataset.dataset_getter import DatasetGetter
 from model.base_dae import BaseDAE
 
 
-def train_autoencoder(args):
+def train_autoencoder(args, output_dir):
 
     dataset_getter = DatasetGetter()
 
@@ -106,6 +108,8 @@ def train_autoencoder(args):
 
             optimizer.step()
 
+            input_data.detach_()
+
             args.log.debug("Training loss %0.6f" %( math.sqrt(mmse_loss.item()) ) )
 
         my_base_dae.eval()
@@ -130,6 +134,8 @@ def train_autoencoder(args):
 
             validation_loss += (mmse_loss.item() if not loss_analyzer.is_nan(mmse_loss.item()) else 0)
 
+            input_data.detach_()
+
             args.log.debug("Validation loss %0.6f" %( math.sqrt( mmse_loss.item() ) ) )
 
         training_rmses.append( math.sqrt(training_loss/nb_training_iter) )
@@ -149,9 +155,9 @@ def train_autoencoder(args):
     logging.info("Total training time of %0.2f seconds" %(time.time() - total_time_start) )
 
     plot_drawer.add( data=[ training_rmses, validation_rmses ], title="RMSE", legend=["training rmse", "validation_rmse"], display=True )
-    plot_drawer.export_to_png(idx = 0, export_path="../out/")
+    plot_drawer.export_to_png(idx = 0, export_path=output_dir)
+    export_parameters_to_json(args, output_dir)
 
-    #torch.save(model.state_dict(), './sim_autoencoder.pth')
 
 
 if __name__ == "__main__":
@@ -162,6 +168,8 @@ if __name__ == "__main__":
 
     args.log.info("Autoencoder trainer has started.")
 
-    train_autoencoder(args)
+    output_dir = "../out/autoencoder_training_" + get_day_month_year_hour_minute_second()
+    
+    train_autoencoder(args, output_dir)
 
     

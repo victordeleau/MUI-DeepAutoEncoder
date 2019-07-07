@@ -64,7 +64,7 @@ class RatingDataset(PytorchDataset):
 
             self.index_user, self.index_item = data.userId.unique(), data.itemId.unique()
 
-            self.nb_user, self.nb_item = len( self.index_user ), len( self.index_item )
+            self.nb_user, self.nb_item = len( self.index_user )-1, len( self.index_item )-1
 
             self.user_index_swap = (np.arange(self.nb_user) if user_index_swap==None else user_index_swap)
             self.item_index_swap = (np.arange(self.nb_item) if item_index_swap==None else item_index_swap)
@@ -170,11 +170,20 @@ class RatingDataset(PytorchDataset):
 
                 swap_idx = self.item_index_swap[idx]
 
-                data = self.data[:, swap_idx].todense()
-                mask = data != 0.0
+                data = self.data[:, swap_idx].todense()[1:]
                 bias = self.gm + self.um + self.im[swap_idx]
+                #print(np.ravel( data ) - bias)
+                """print(self.gm)
+                print(self.um)
+                print(self.im[swap_idx])
+                print(self.gm + self.um + self.im[swap_idx])
+                print(np.ravel( data ) - bias)
+                input()"""
 
-                return np.ravel( data - np.multiply(bias,mask.transpose()).transpose() )
+                unbiased = np.ravel( data ) - bias
+                centered = (unbiased - unbiased.mean())*2
+
+                return centered
 
             else:
 
@@ -193,10 +202,12 @@ class RatingDataset(PytorchDataset):
                 swap_idx = self.user_index_swap[idx]
 
                 data = self.data[swap_idx, :].todense()
-                mask = data != 0.0
                 bias = self.gm + self.um[swap_idx] + self.im
 
-                return np.ravel( data - np.multiply(bias,mask) )
+                unbiased = np.ravel( data - bias )
+                centered = (unbiased - unbiased.mean())*2
+
+                return 
 
             else:
 
@@ -227,14 +238,14 @@ class RatingDataset(PytorchDataset):
 
         if user_mean == True:
 
-            um_sum = np.ravel( np.transpose( self.data.sum(axis=1) ) )
-            um_nnz = self.data.getnnz(axis=1)
+            um_sum = np.ravel( np.transpose( self.data.sum(axis=1) ) )[1:]
+            um_nnz = self.data.getnnz(axis=1)[1:]
             self.um = np.divide( um_sum.astype(float), um_nnz, out=np.zeros_like(um_sum), where=um_nnz!=0 ) - self.gm
         
         if item_mean == True:
 
-            im_sum = self.data.sum(axis=0)
-            im_nnz = self.data.getnnz(axis=0)
+            im_sum = np.ravel( self.data.sum(axis=0) )[1:]
+            im_nnz = self.data.getnnz(axis=0)[1:]
             self.im = np.ravel( np.divide( im_sum.astype(float), im_nnz, out=np.zeros_like(im_sum), where=im_nnz!=0 ) ) - self.gm
 
         self._is_normalized = True

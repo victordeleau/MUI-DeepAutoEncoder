@@ -172,13 +172,6 @@ class RatingDataset(PytorchDataset):
 
                 data = self.data[:, swap_idx].todense()[1:]
                 bias = self.gm + self.um + self.im[swap_idx]
-                #print(np.ravel( data ) - bias)
-                """print(self.gm)
-                print(self.um)
-                print(self.im[swap_idx])
-                print(self.gm + self.um + self.im[swap_idx])
-                print(np.ravel( data ) - bias)
-                input()"""
 
                 unbiased = np.ravel( data ) - bias
                 centered = unbiased - unbiased.mean()

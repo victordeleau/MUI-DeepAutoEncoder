@@ -182,7 +182,7 @@ class RatingDataset(PytorchDataset):
 
                 swap_idx = self.item_index_swap[idx]
 
-                return np.ravel(self.data[:, swap_idx].todense())
+                return np.ravel(self.data[:, swap_idx].todense())[1:]
 
         elif self._view == "user":
             
@@ -206,7 +206,7 @@ class RatingDataset(PytorchDataset):
 
                 swap_idx = self.user_index_swap[idx]
 
-                return np.ravel( self.data[swap_idx, :].todense() )
+                return np.ravel( self.data[swap_idx, :].todense() )[1:]
 
         else:
             return 0

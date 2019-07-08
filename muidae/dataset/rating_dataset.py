@@ -181,7 +181,7 @@ class RatingDataset(PytorchDataset):
                 input()"""
 
                 unbiased = np.ravel( data ) - bias
-                centered = (unbiased - unbiased.mean())*2
+                centered = unbiased - unbiased.mean()
 
                 return centered
 
@@ -201,13 +201,13 @@ class RatingDataset(PytorchDataset):
 
                 swap_idx = self.user_index_swap[idx]
 
-                data = self.data[swap_idx, :].todense()
+                data = np.ravel(self.data[swap_idx, :].todense())[1:]
                 bias = self.gm + self.um[swap_idx] + self.im
 
                 unbiased = np.ravel( data - bias )
-                centered = (unbiased - unbiased.mean())*2
+                centered = unbiased - unbiased.mean()
 
-                return 
+                return centered
 
             else:
 

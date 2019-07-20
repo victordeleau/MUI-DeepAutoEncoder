@@ -9,7 +9,7 @@ import torchvision
 import torch
 import scipy.sparse as sparse
 import numpy as np
-from random import shuffle
+import random
 from torch.utils.data.dataset import Dataset as PytorchDataset
 
 # TODO remove first row and column from data (nan, possibly text or something)
@@ -27,67 +27,46 @@ class RatingDataset(PytorchDataset):
 
     # pass normalization data to sub-dataset
 
-    def __init__(self, data, name, view="user", is_randomized=False, is_sub_dataset=False, is_normalized=False,
-            gm=None, um=None, im=None,
-            user_index_swap=None, item_index_swap=None,
-            userId_map=None, itemId_map=None,
-            index_user=None, index_item=None,
-            nb_user=None, nb_item=None):
+    def __init__(self, df_data, name, view="user", is_sub_dataset=False, has_been_normalized=False,
+            gm=None, um=None, im=None):
+
+        assert( isinstance(df_data, pd.DataFrame) )
 
         self.name = name
 
-        self._is_randomized = is_randomized
+        self._has_been_normalized = has_been_normalized
         self._is_sub_dataset = is_sub_dataset
-        self._is_normalized = is_normalized
         self._view = view
 
         self.iterator_count = 0
         self.column_id, self.row_id = None, None
         self.gm, self.um, self.im = None, None, None
 
+        self.userId_map, self.itemId_map = None, None
 
-        if not self._is_sub_dataset:
+        self.df_data = df_data
 
-            assert( isinstance(data, pd.DataFrame) )
-        
-            self.userId_map, self.itemId_map = None, None
-
-            data = self._map_index_to_monotonic(data)
-
-            self.data = sparse.csr_matrix(
-                (
-                    data.values[:, 2],
-                    (data.values[:, 0].astype(int),
-                    data.values[:, 1].astype(int))
-                )
+        self.csr_data = sparse.csr_matrix(
+            (
+                df_data.values[:, 2],
+                (df_data.values[:, 0].astype(int),
+                df_data.values[:, 1].astype(int))
             )
+        )
 
-            self.index_user, self.index_item = data.userId.unique(), data.itemId.unique()
+        self.index_user, self.index_item = df_data.userId.unique(), df_data.itemId.unique()
 
-            self.nb_user, self.nb_item = len( self.index_user )-1, len( self.index_item )-1
-
-            self.user_index_swap = (np.arange(self.nb_user) if user_index_swap==None else user_index_swap)
-            self.item_index_swap = (np.arange(self.nb_item) if item_index_swap==None else item_index_swap)
-
-            # when accessing data from sparse matrix, data[ item_index, user_index ]
-
-        else:
-
-            assert isinstance(data, sparse.csr_matrix)
-
-            self.userId_map, self.itemId_map = userId_map, itemId_map
-
-            self.index_user, self.index_item = index_user, index_item
-            
-            self.user_index_swap, self.item_index_swap = user_index_swap, item_index_swap
-
-            self.nb_user, self.nb_item = nb_user, nb_item
-
-            self.gm, self.um, self.im = gm, um, im
-
-            self.data = data
+        self.nb_user, self.nb_item = len( self.index_user )-1, len( self.index_item )-1
 
         self._io_size = (self.nb_item+1 if self._view == "user" else self.nb_user+1 )
+
+        self.normalize() if has_been_normalized == True else None
+
+        self._randomize()
+        
+        self._map_index_to_monotonic()
+
+        
 
 
     """
@@ -109,6 +88,7 @@ class RatingDataset(PytorchDataset):
     def __iter__(self):
 
         self.count = 0
+
         return self
 
 
@@ -166,11 +146,11 @@ class RatingDataset(PytorchDataset):
 
                 return 0
 
-            elif self._is_normalized:
+            elif self._has_been_normalized:
 
                 swap_idx = self.item_index_swap[idx]
 
-                data = self.data[:, swap_idx].todense()[1:]
+                data = self.csr_data[:, swap_idx].todense()[1:]
                 bias = self.gm + self.um + self.im[swap_idx]
 
                 unbiased = np.ravel( data ) - bias
@@ -182,7 +162,7 @@ class RatingDataset(PytorchDataset):
 
                 swap_idx = self.item_index_swap[idx]
 
-                return np.ravel(self.data[:, swap_idx].todense())[1:]
+                return np.ravel(self.csr_data[:, swap_idx].todense())[1:]
 
         elif self._view == "user":
             
@@ -190,11 +170,11 @@ class RatingDataset(PytorchDataset):
 
                 return 0
 
-            elif self._is_normalized:
+            elif self._has_been_normalized:
 
                 swap_idx = self.user_index_swap[idx]
 
-                data = np.ravel(self.data[swap_idx, :].todense())[1:]
+                data = np.ravel(self.csr_data[swap_idx, :].todense())[1:]
                 bias = self.gm + self.um[swap_idx] + self.im
 
                 unbiased = np.ravel( data - bias )
@@ -206,7 +186,7 @@ class RatingDataset(PytorchDataset):
 
                 swap_idx = self.user_index_swap[idx]
 
-                return np.ravel( self.data[swap_idx, :].todense() )[1:]
+                return np.ravel( self.csr_data[swap_idx, :].todense() )[1:]
 
         else:
             return 0
@@ -227,21 +207,23 @@ class RatingDataset(PytorchDataset):
 
         if global_mean == True:
 
-            self.gm = self.data.sum() / self.data.getnnz()
+            self.gm = self.csr_data.sum() / self.csr_data.getnnz()
 
         if user_mean == True:
 
-            um_sum = np.ravel( np.transpose( self.data.sum(axis=1) ) )[1:]
-            um_nnz = self.data.getnnz(axis=1)[1:]
+            um_sum = np.ravel( np.transpose( self.csr_data.sum(axis=1) ) )[1:]
+            um_nnz = self.csr_data.getnnz(axis=1)[1:]
             self.um = np.divide( um_sum.astype(float), um_nnz, out=np.zeros_like(um_sum), where=um_nnz!=0 ) - self.gm
         
         if item_mean == True:
 
-            im_sum = np.ravel( self.data.sum(axis=0) )[1:]
-            im_nnz = self.data.getnnz(axis=0)[1:]
+            im_sum = np.ravel( self.csr_data.sum(axis=0) )[1:]
+            im_nnz = self.csr_data.getnnz(axis=0)[1:]
             self.im = np.ravel( np.divide( im_sum.astype(float), im_nnz, out=np.zeros_like(im_sum), where=im_nnz!=0 ) ) - self.gm
 
-        self._is_normalized = True
+        self._has_been_normalized = True
+
+        return self
 
 
     """
@@ -250,16 +232,12 @@ class RatingDataset(PytorchDataset):
         typically if current dataset is a subset of another dataset that has
         been previously randomized.
     """
-    def randomize(self):
+    def _randomize(self):
 
-        if not self.has_been_randomized:
+        self.user_index_swap = sorted(np.arange(self.nb_user), key=lambda k: random.random())
+        self.item_index_swap = sorted(np.arange(self.nb_item), key=lambda k: random.random())
 
-            self.user_index_swap = shuffle(np.arrange(self.nb_user))
-            self.item_index_swap = shuffle(np.arrange(self.nb_item))
-        
-            return self.user_index_swap, self.item_index_swap
-
-        return 0
+        self._has_been_randomized = True
 
 
     """
@@ -267,29 +245,29 @@ class RatingDataset(PytorchDataset):
         input
             df_data: pandas.DataFrame to process
     """
-    def _map_index_to_monotonic(self, df_data):
+    def _map_index_to_monotonic(self):
 
         temp_dict = {}
         c = 1
-        for i in df_data.userId.unique():
+        for i in self.df_data.userId.unique():
             temp_dict[ i ] = c
             c+= 1
 
-        df_data['userId'].replace( temp_dict, inplace = True )
+        self.df_data['userId'].replace( temp_dict, inplace = True )
 
         self.userId_map = dict((str(k), v) for k, v in temp_dict.items())
         
         temp_dict = {}
         c = 1
-        for i in df_data.itemId.unique():
+        for i in self.df_data.itemId.unique():
             temp_dict[ i ] = c
             c+= 1
         
-        df_data['itemId'].replace( temp_dict, inplace = True )
+        self.df_data['itemId'].replace( temp_dict, inplace = True )
 
         self.itemId_map = dict((str(k), v) for k, v in temp_dict.items())
 
-        return df_data
+        return self
 
 
     """
@@ -299,56 +277,26 @@ class RatingDataset(PytorchDataset):
         output
             tuple of two RatingDataset, subset of this
     """
-    def get_split_sets(self, split_factor=0.8, view="user"):
+    def get_split_sets(self, split_factor=0.8, view="user"):        
 
         first_dataset, second_dataset = None, None
-        first_nb_user, first_nb_item = None, None
-        second_nb_user, second_nb_item = None, None
 
-        if split_factor >= 1 or split_factor <= 0:
-            return 0
-
-        if view == "user":
-            
-            first_dataset, second_dataset = train_test_split(self.data, test_size=1-split_factor)
-            first_nb_user, first_nb_item = math.floor( self.nb_user * split_factor), math.floor( self.nb_item * split_factor )
-            second_nb_user, second_nb_item = math.floor( self.nb_user * (1-split_factor)), math.floor( self.nb_item * (1-split_factor) )
-
-        elif view == "item":
-
-            tmp = self.data.transpose()
-
-            first_dataset, second_dataset = train_test_split(tmp, test_size=1-split_factor)
-            first_nb_user, first_nb_item = math.floor( self.nb_user * split_factor), math.floor( self.nb_item * split_factor )
-            second_nb_user, second_nb_item = math.floor( self.nb_user * (1-split_factor)), math.floor( self.nb_item * (1-split_factor) )
-            first_dataset, second_dataset = first_dataset.transpose().tocsr(), second_dataset.transpose().tocsr()
-            
-        else:
-            return 0
-
+        first_dataset, second_dataset = train_test_split(self.df_data, test_size=1-split_factor)
 
         return (
                 RatingDataset(
                     first_dataset,
                     name=self.name+"_subset",
-                    is_randomized=True,
-                    is_sub_dataset=True, is_normalized=self._is_normalized,
-                    user_index_swap=self.user_index_swap, item_index_swap=self.item_index_swap,
-                    userId_map=self.userId_map, itemId_map=self.itemId_map,
-                    index_user=self.index_user, index_item=self.index_item,
-                    nb_user=first_nb_user, nb_item=first_nb_item,
+                    is_sub_dataset=True,
+                    has_been_normalized=self._has_been_normalized,
                     gm=self.gm, um=self.um, im=self.im,
                     view=self._view),
                     
                 RatingDataset(
                     second_dataset,
                     name=self.name+"_subset",
-                    is_randomized=True,
-                    is_sub_dataset=True, is_normalized=self._is_normalized,
-                    user_index_swap=self.user_index_swap, item_index_swap=self.item_index_swap,
-                    userId_map=self.userId_map, itemId_map=self.itemId_map,
-                    index_user=self.index_user, index_item=self.index_item,
-                    nb_user=second_nb_user, nb_item=second_nb_item,
+                    is_sub_dataset=True,
+                    has_been_normalized=self._has_been_normalized,
                     gm=self.gm, um=self.um, im=self.im,
                     view=self._view)
                 )

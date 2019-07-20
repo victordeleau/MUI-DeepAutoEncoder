@@ -185,5 +185,3 @@ if __name__ == "__main__":
     output_dir = "../out/autoencoder_training_" + get_day_month_year_hour_minute_second()
     
     train_autoencoder(args, output_dir)
-
-    

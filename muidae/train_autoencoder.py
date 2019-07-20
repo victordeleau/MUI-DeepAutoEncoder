@@ -18,6 +18,7 @@ from tool.logging import set_logging, display_info
 from tool.metering import get_object_size, get_rmse, LossAnalyzer, PlotDrawer, export_parameters_to_json
 from tool.parser import parse
 from tool.date import get_day_month_year_hour_minute_second
+from tool.data_tool import get_batch
 from dataset.dataset_getter import DatasetGetter
 from model.base_dae import BaseDAE
 
@@ -34,13 +35,12 @@ def train_autoencoder(args, output_dir):
 
     if args.normalize: dataset.normalize()
     
-    training_and_validation_dataset, _ = dataset.get_split_sets(split_factor=0.9, view=args.view)
-    training_dataset, validation_dataset = training_and_validation_dataset.get_split_sets(split_factor=0.8, view=args.view)
+    training_and_validation_set, testing_set = dataset.get_split_sets(split_factor=0.9, view=args.view)
+    training_set, validation_set = training_and_validation_set.get_split_sets(split_factor=0.8, view=args.view)
     
-    nb_training_example = (training_dataset.nb_item if training_dataset.get_view() == "item" else training_dataset.nb_user)
-    nb_validation_example = (validation_dataset.nb_item if validation_dataset.get_view() == "item" else validation_dataset.nb_user)
-    #nb_testing_example = (testing_set.nb_item if testing_set.get_view() == "item_view" else testing_set.nb_user)
-    nb_testing_example = None
+    nb_training_example = (training_set.nb_item if training_set.get_view() == "item" else training_set.nb_user)
+    nb_validation_example = (validation_set.nb_item if validation_set.get_view() == "item" else validation_set.nb_user)
+    nb_testing_example = (testing_set.nb_item if testing_set.get_view() == "item_view" else testing_set.nb_user)
 
     my_base_dae = BaseDAE(
         io_size=dataset.get_io_size(),
@@ -61,18 +61,19 @@ def train_autoencoder(args, output_dir):
     
     nb_training_sample_to_process = math.floor(args.redux * nb_training_example)
     nb_validation_sample_to_process = math.floor(args.redux * nb_validation_example)
-    #nb_testing_sample = math.floor(args.redux * nb_testing_example)
+    nb_testing_sample_to_process = math.floor(args.redux * nb_testing_example)
 
     nb_training_iter = math.ceil(nb_training_sample_to_process / args.batch_size)
     nb_validation_iter = math.ceil(nb_validation_sample_to_process / args.batch_size)
-    #nb_testing_iter = np.ceil(nb_testing_sample / args.batch_size)
+    nb_testing_iter = math.ceil(nb_testing_sample_to_process / args.batch_size)
 
     loss_analyzer = LossAnalyzer(args.max_increasing_cnt, args.max_nan_cnt)
     plot_drawer = PlotDrawer()
 
-    total_time_start = time.time()
+    training_time_start = time.time()
 
     training_rmses, validation_rmses = [], []
+
 
     for epoch in range(args.nb_epoch):
 
@@ -83,16 +84,10 @@ def train_autoencoder(args, output_dir):
         my_base_dae.to(device)
         my_base_dae.train()
 
-        for i in range(nb_training_iter):
 
-            if args.batch_size == 1:
-                training_batch, remaining = training_dataset[i], 1
+        for i in range(nb_training_iter): # training ##############################
 
-            else:
-                remaining = (args.batch_size 
-                    if (i+1)*args.batch_size < nb_training_sample_to_process
-                    else nb_training_sample_to_process-(i*args.batch_size) )
-                training_batch = np.stack([training_dataset[i*args.batch_size+j] for j in range(remaining)])
+            training_batch, remaining = get_batch(training_set, args.batch_size, nb_training_sample_to_process, i)
 
             input_data = Variable(torch.Tensor(np.squeeze(training_batch))).to(device)
 
@@ -115,16 +110,10 @@ def train_autoencoder(args, output_dir):
         my_base_dae.eval()
         validation_loss = 0
 
-        for i in range(nb_validation_iter):
 
-            if args.batch_size == 1:
-                validation_batch, remaining = validation_dataset[i], 1
+        for i in range(nb_validation_iter): # validation ##############################
 
-            else:
-                remaining = (args.batch_size 
-                    if (i+1)*args.batch_size < nb_validation_sample_to_process
-                    else nb_validation_sample_to_process-(i*args.batch_size) )    
-                validation_batch = np.stack([validation_dataset[i*args.batch_size+j] for j in range(remaining)])
+            validation_batch, remaining = get_batch(validation_set, args.batch_size, nb_validation_sample_to_process, i)
 
             input_data = Variable(torch.Tensor(np.squeeze(validation_batch))).to(device)
 
@@ -152,7 +141,32 @@ def train_autoencoder(args, output_dir):
             args.log.info("Optimum detected with validation rmse %0.6f at epoch %d" %(loss_analyzer.previous_losses[-1], epoch+1-args.max_increasing_cnt))
             break
 
-    logging.info("Total training time of %0.2f seconds" %(time.time() - total_time_start) )
+    logging.info("Total training time of %0.2f seconds" %(time.time() - training_time_start) )
+    args.log.info("Training has ended.\n")
+
+
+    testing_loss = 0
+    testing_time_start = time.time()
+    for i in range(nb_testing_iter): # testing ##############################
+
+        testing_batch, remaining = get_batch(testing_set, args.batch_size, nb_testing_sample_to_process, i)
+
+        input_data = Variable(torch.Tensor(np.squeeze(testing_batch))).to(device)
+
+        output_data = my_base_dae(input_data)
+
+        mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
+
+        testing_loss += (mmse_loss.item() if not loss_analyzer.is_nan(mmse_loss.item()) else 0)
+
+        input_data.detach_()
+
+    testing_rmse = math.sqrt(testing_loss/nb_testing_iter)
+
+    args.log.info('Testing rmse:{:.6f}, time:{:0.2f}s'.format( testing_rmse, time.time()-testing_time_start))
+
+    # end of training / testing ##############################
+
 
     plot_drawer.add( data=[ training_rmses, validation_rmses ], title="RMSE", legend=["training rmse", "validation_rmse"], display=True )
     plot_drawer.export_to_png(idx = 0, export_path=output_dir)

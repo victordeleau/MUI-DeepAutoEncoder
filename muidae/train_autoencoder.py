@@ -62,7 +62,7 @@ def train_autoencoder(args, output_dir):
 
     plot_drawer = PlotDrawer()
 
-    batch_builder = BatchBuilder(dataset.get_io_size(), [0.6, 0.2, 0.2], 16)
+    batch_builder = BatchBuilder(dataset.get_io_size(), [0.6, 0.2, 0.2], 128)
 
 
     # training ##############################
@@ -146,7 +146,7 @@ def train_autoencoder(args, output_dir):
 
         input_data.detach_()
 
-    logging.info("training rmse:{:.6f}, testing rmse:{:.6f}, testing time of %0.2f seconds".format(
+    logging.info("training rmse:{:.6f}, testing rmse:{:.6f}, testing time of {:0.2f}s".format(
         math.sqrt(training_loss/nb_iter),
         math.sqrt(testing_loss/nb_iter),
         (time.time() - testing_time_start)))

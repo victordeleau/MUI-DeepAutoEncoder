@@ -96,9 +96,6 @@ class BatchBuilder:
                         element = verso
 
                     else:
-                        #print(element)
-                        #print( sum(element) )
-                        print(str(mask_index) + " wrong mask !")
                         mask_index += 1
                         if mask_index == self.nb_potential_mask:
                             raise Exception("Was not able to find a suitable mask ... increase parameter.")

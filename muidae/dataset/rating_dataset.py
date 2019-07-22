@@ -41,6 +41,8 @@ class RatingDataset(PytorchDataset):
 
         self.df_data = df_data
 
+        self._map_index_to_monotonic()
+
         self.csr_data = sparse.csr_matrix(
             (
                 df_data.values[:, 2],
@@ -50,12 +52,12 @@ class RatingDataset(PytorchDataset):
         )               
 
         self.index_user, self.index_item = self.df_data.userId.unique(), self.df_data.itemId.unique()
+        
         self.nb_user, self.nb_item = len( self.index_user )-1, len( self.index_item )-1
 
         self._randomize()
-        self._map_index_to_monotonic()
-
-        self._io_size = (self.nb_item+1 if self._view == "user" else self.nb_user+1 )
+        
+        self.io_size = ( self.nb_item+1 if self._view == "user" else self.nb_user+1 )
         
 
 
@@ -72,7 +74,7 @@ class RatingDataset(PytorchDataset):
     """
     def get_io_size(self):
 
-        return self._io_size
+        return self.io_size
 
 
     def __iter__(self):
@@ -130,8 +132,6 @@ class RatingDataset(PytorchDataset):
     """
     def __getitem__(self, idx):
 
-        print(idx)
-
         if self._view == "item":
             
             if idx < 0 or idx > self.nb_item:
@@ -154,9 +154,7 @@ class RatingDataset(PytorchDataset):
 
                 swap_idx = self.item_index_swap[idx]
 
-                output = np.ravel(self.csr_data[:, swap_idx].todense())[1:]
-
-                return output
+                return np.ravel(self.csr_data[:, swap_idx].todense())[1:]
 
         elif self._view == "user":
             

@@ -31,7 +31,7 @@ class BatchBuilder:
 
             self.masks.append([])
 
-            for j in range(16):
+            for j in range(self.nb_potential_mask):
 
                 random_mask = np.random.choice([0, 1], size=self.vector_size, p=self.iterative_split[i])
 
@@ -71,13 +71,13 @@ class BatchBuilder:
             
             main_batch = np.stack([dataset[i*batch_size+j] for j in range(remaining)])
 
+        output_batches = [ [] for i in range(len(self.split)) ]
+
         # for each element in batch
         for element in main_batch:
 
             # for every iterative split
             for i in range(len(self.split)-1):
-
-                output_batches.append( [] )
 
                 # find a suitable mask
                 good_mask_found = False
@@ -96,12 +96,17 @@ class BatchBuilder:
                         element = verso
 
                     else:
+                        #print(element)
+                        #print( sum(element) )
+                        print(str(mask_index) + " wrong mask !")
                         mask_index += 1
-                        if mask_index == 16:
+                        if mask_index == self.nb_potential_mask:
                             raise Exception("Was not able to find a suitable mask ... increase parameter.")
 
-            output_batches.append( [] )
             output_batches[-1].append( verso )
+
+        for i in range(len(self.split)):
+            output_batches[i] = np.stack(output_batches[i])
 
         return (*output_batches, remaining)
 
@@ -109,14 +114,17 @@ class BatchBuilder:
 
 if __name__ == "__main__":
 
-    batch_builder = BatchBuilder(10000, [0.8, 0.1, 0.1], 16)
+    batch_builder = BatchBuilder(100, [0.8, 0.1, 0.1], 16)
 
-    dataset = np.ones(100000000).reshape((10000, 10000))
+    dataset = np.ones(10000).reshape((100, 100))
 
-    batch_1, batch_2, batch_3, remaining = batch_builder.get_batches( dataset, batch_size=100, nb_sample_to_process=1, i=0 )
+    batch_1, batch_2, batch_3, remaining = batch_builder.get_batches( dataset, batch_size=2, nb_sample_to_process=1000, i=0 )
 
+    print(batch_1)
     print( batch_1[0].sum() / batch_1[0].shape[0] )
 
+    print(batch_2)
     print( batch_2[0].sum() / batch_2[0].shape[0] )
 
+    print(batch_3)
     print( batch_3[0].sum() / batch_3[0].shape[0] )

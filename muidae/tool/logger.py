@@ -53,14 +53,4 @@ def display_info(args, dataset=None):
         logging.info("### DATASET NAME = %s" %args.dataset)
         logging.info("### DATASET SIZE FACTOR = %.4f" %args.redux)
         logging.info("### DATASET VIEW = %s" %args.view)
-        logging.info("### REDUX FACTOR = %s\n" %args.redux)
-        #logging.info("### SUB TRAINING OBSERVATION = %s" %nb_training_example)
-        #logging.info("### SUB VALIDATION OBSERVATION = %s" %nb_validation_example)
-        #logging.info("### SUB TESTING OBSERVATION = %s\n" %nb_testing_example)
-
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-        logging.info("Cuda available, loading GPU device")
-    else:
-        device = torch.device('cpu')
-        logging.info("No Cuda device available, using CPU") 
+        logging.info("### NORMALIZED = %s\n" %args.normalize)

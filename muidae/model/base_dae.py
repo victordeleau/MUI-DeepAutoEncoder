@@ -15,9 +15,9 @@ class BaseDAE(nn.Module):
         self.z_size = z_size
         self.activation = activation
 
-        self.mode = 0 # default to train mode (1 for validation mode, 2 for test mode)
+        self.nan_count = 0
 
-        # variable length input layer #############################################################
+        self.mode = 0 # default to train mode (1 for validation mode, 2 for test mode)
 
         input_layer = []
         for i in range(nb_input_layer-1):
@@ -29,9 +29,6 @@ class BaseDAE(nn.Module):
 
         self.input_layer = nn.Sequential( *input_layer )
 
-
-        # variable length output layer #############################################################
-
         output_layer = []
         output_layer.append( nn.Linear(z_size, io_size) )
         output_layer.append( activation(True) )
@@ -42,18 +39,12 @@ class BaseDAE(nn.Module):
             
         self.output_layer = nn.Sequential( *output_layer )
 
-
-        # initialize weights and biases ###########################################################
-
-        # recursive application of the provided function to any nn.Linear layer
-
         self.input_layer.apply(self.init_weight_general_rule)
         self.input_layer.apply(self.init_bias_zero)
         
         self.output_layer.apply(self.init_weight_general_rule)
         self.output_layer.apply(self.init_bias_zero)
 
-        
 
     """
         apply forward pass to input vector x
@@ -143,7 +134,7 @@ class BaseDAE(nn.Module):
 
         mask = input_data != 0.0
         nb_rating = torch.sum( mask )
-        loss = mmse_criterion( input_data, output_data * mask.float() ) / nb_rating
+        loss = mmse_criterion( input_data, output_data * mask.float() ) / nb_rating.float()
 
         return loss
 
@@ -171,6 +162,3 @@ class BaseDAE(nn.Module):
             return input
         else:
             raise ValueError('Unknown activation function')"""
-
-
-

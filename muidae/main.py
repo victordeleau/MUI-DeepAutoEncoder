@@ -1,124 +1,108 @@
-# Mixed User Item Deep Auto Encoder
 
-import sys
-import time
-import torch
-import math
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-import numpy as np
-from torch.autograd import Variable
-import gc
-import psutil
 import logging
 
-from tool.logging import set_logging, display_info
-from tool.metering import get_object_size, get_rmse
+from train_autoencoder import train_autoencoder
 from tool.parser import parse
-from dataset.dataset_getter import DatasetGetter
-from model.base_dae import BaseDAE
+from tool.logger import set_logging
+from tool.date import get_day_month_year_hour_minute_second
 
 
-if __name__ == "__main__":
+"""
+    train an autoencoder with either a user view or an item view
+"""
+def user_or_item_ae(args):
+
+    output_dir = "../out/autoencoder_training_" + get_day_month_year_hour_minute_second()
+
+    train_autoencoder(args, output_dir)
+
+
+"""
+    extract a user embedding and a item embedding, then train an MLP
+    to predict rating of a given user to a given item.
+"""
+def joint_user_item_ae(args):
+
+    args.view = "user"
+    train_autoencoder(args)
+
+    args.view = "item"
+    train_autoencoder(args)
+
+
+"""
+    extract a user embedding OR a item embedding, for different z size,
+    then combine this embbeding in a pyramidal square matrix (see note),
+    then train an MLP on this input to predict the rating of a given user
+    to a given item. 
+"""
+def pyramidal_user_or_item_ae(args):
+
+    # loop over different z size for user OR item view
+    for zsize in range(7):
+        pass
+
+    # combine those different z size user OR item view
+
+
+"""
+    extract a user embedding AND a item embedding, for different z size,
+    then combine those embbedings in a pyramidal square matrix (see note),
+    then train an MLP on those inputs to predict the rating of a given user
+    to a given item.
+"""
+def pyramidal_joint_ae(args):
+
+    # loop over different z size for user view
+    for zsize in range(7):
+        pass
+
+    # combine those different z size user view
+
+    # loop over different z size for item view
+    for zsize in range(7):
+        pass
+
+    # combine those different z size item view
+
+
+if __name__=="__main__":
 
     args = parse()
-    log = set_logging(logging_level=(logging.DEBUG if args.debug else logging.INFO))
-    log.info("Mixed User Item Deep Auto Encoder (MUI-DAE) demo")
 
-    dataset_getter = DatasetGetter()
+    vars(args)["log"] = set_logging(logging_level=(logging.DEBUG if args.debug else logging.INFO))
 
-    if not dataset_getter.local_dataset_found() or args.reload_dataset:
-        log.info( "Downloading dataset " + args.dataset )
-        dataset_getter.download_dataset(dataset_name=args.dataset)
+    args.log.info("MUIDAE has started.")
 
-    dataset = dataset_getter.load_local_dataset(view=args.view, try_load_binary=not args.reload_dataset)
-
-    if args.normalize: dataset.normalize()
     
-    training_and_validation_dataset, _ = dataset.get_split_sets(split_factor=0.9)
-    training_dataset, validation_dataset = training_and_validation_dataset.get_split_sets(split_factor=0.8)
+    if args.mode == 0: # simple user or item autoencoder
+
+        args.log.info("Simple " + args.view + " view autoencoder selected.")
+
+        user_or_item_ae(args)
+
     
-    nb_training_example = (training_dataset.nb_item if training_dataset.get_view() == "item_view" else training_dataset.nb_user)
-    nb_validation_example = (validation_dataset.nb_item if validation_dataset.get_view() == "item_view" else validation_dataset.nb_user)
-    #nb_testing_example = (testing_set.nb_item if testing_set.get_view() == "item_view" else testing_set.nb_user)
-    nb_testing_example = None
+    elif args.mode == 1: #  joint user item autoencoder
 
-    my_base_dae = BaseDAE(
-        io_size=dataset.get_io_size(),
-        z_size=args.zsize,
-        nb_input_layer=args.nb_layer,
-        nb_output_layer=args.nb_layer)
+        args.log.info("Joint user item view autoencoder selected.")
 
-    display_info(args, dataset)  
+        joint_user_item_ae(args)
 
-    optimizer = torch.optim.Adam( my_base_dae.parameters(), lr=args.learning_rate, weight_decay=args.regularization )
-    
-    nb_training_sample_to_process = math.floor(args.redux * nb_training_example)
-    nb_validation_sample_to_process = math.floor(args.redux * nb_validation_example)
-    #nb_testing_sample = math.floor(args.redux * nb_testing_example)
 
-    nb_training_iter = math.ceil(nb_training_sample_to_process / args.batch_size)
-    nb_validation_iter = math.ceil(nb_validation_sample_to_process / args.batch_size)
-    #nb_testing_iter = np.ceil(nb_testing_sample / args.batch_size)
+    elif args.mode == 2: # pyramidal user OR item autoencoder
 
-    log.info("Training has started.")
+        args.log.info("Pyramidal " + args.view + " view autoencoder selected.")
 
-    for epoch in range(args.nb_epoch):
+        pyramidal_user_or_item_ae(args)
 
-        my_base_dae.train()
-        sum_training_loss = 0
 
-        for i in range(nb_training_iter):
+    elif args.mode == 3: # pyramidal joint user item autoencoder
 
-            remaining = (args.batch_size 
-                if (i+1)*args.batch_size < nb_training_sample_to_process
-                else nb_training_sample_to_process-(i*args.batch_size) )
+        args.log.info("Pyramidal joint user item view autoencoder selected.")
 
-            training_batch = [training_dataset[i*args.batch_size+j] for j in range(remaining)]
+        pyramidal_joint_ae(args)
 
-            input_data = Variable( torch.Tensor( np.squeeze( np.stack( training_batch ) ) ) )
 
-            output_data = my_base_dae( input_data )
+    else:
 
-            mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
-
-            optimizer.zero_grad()
-
-            mmse_loss.backward()
-
-            optimizer.step()
-
-            sum_training_loss += mmse_loss.item()
-
-            log.debug("Training loss %0.6f" %(mmse_loss.item() / remaining) )
-
-        my_base_dae.eval()
-        sum_validation_loss = 0
-
-        for i in range(nb_validation_iter):
-
-            remaining = (args.batch_size 
-                if (i+1)*args.batch_size < nb_validation_sample_to_process
-                else nb_validation_sample_to_process-(i*args.batch_size) )
-
-            validation_batch = [validation_dataset[i*args.batch_size+j] for j in range(remaining)]
-
-            input_data = Variable( torch.Tensor( np.squeeze( np.stack( validation_batch ) ) ) )
-
-            output_data = my_base_dae( input_data )
-
-            mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
-
-            sum_validation_loss += mmse_loss.item()
-
-            log.debug("Validation loss %0.6f" %(mmse_loss.item() / remaining) )
-
-        log.info('epoch [{}/{}], training rmse:{:.6f}, validation rmse:{:.6f}'.format(
-            epoch + 1,
-            args.nb_epoch,
-            math.sqrt(sum_training_loss/nb_training_iter),
-            math.sqrt(sum_validation_loss/nb_validation_iter)))
-
-        sum_training_loss, sum_validation_loss = 0, 0
-
-    #torch.save(model.state_dict(), './sim_autoencoder.pth')
+        raise Exception("Invalid mode provided, options are [0, 1, 2, 3]")

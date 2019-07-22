@@ -27,22 +27,17 @@ class RatingDataset(PytorchDataset):
 
     # pass normalization data to sub-dataset
 
-    def __init__(self, df_data, name, view="user", is_sub_dataset=False, has_been_normalized=False,
-            gm=None, um=None, im=None):
+    def __init__(self, df_data, name, view="user"):
 
         assert( isinstance(df_data, pd.DataFrame) )
 
         self.name = name
 
-        self._has_been_normalized = has_been_normalized
-        self._is_sub_dataset = is_sub_dataset
         self._view = view
 
         self.iterator_count = 0
-        self.column_id, self.row_id = None, None
-        self.gm, self.um, self.im = None, None, None
 
-        self.userId_map, self.itemId_map = None, None
+        self._has_been_normalized = False
 
         self.df_data = df_data
 
@@ -52,20 +47,15 @@ class RatingDataset(PytorchDataset):
                 (df_data.values[:, 0].astype(int),
                 df_data.values[:, 1].astype(int))
             )
-        )
+        )               
 
-        self.index_user, self.index_item = df_data.userId.unique(), df_data.itemId.unique()
-
+        self.index_user, self.index_item = self.df_data.userId.unique(), self.df_data.itemId.unique()
         self.nb_user, self.nb_item = len( self.index_user )-1, len( self.index_item )-1
 
-        self._io_size = (self.nb_item+1 if self._view == "user" else self.nb_user+1 )
-
-        self.normalize() if has_been_normalized == True else None
-
         self._randomize()
-        
         self._map_index_to_monotonic()
 
+        self._io_size = (self.nb_item+1 if self._view == "user" else self.nb_user+1 )
         
 
 
@@ -140,6 +130,8 @@ class RatingDataset(PytorchDataset):
     """
     def __getitem__(self, idx):
 
+        print(idx)
+
         if self._view == "item":
             
             if idx < 0 or idx > self.nb_item:
@@ -162,7 +154,9 @@ class RatingDataset(PytorchDataset):
 
                 swap_idx = self.item_index_swap[idx]
 
-                return np.ravel(self.csr_data[:, swap_idx].todense())[1:]
+                output = np.ravel(self.csr_data[:, swap_idx].todense())[1:]
+
+                return output
 
         elif self._view == "user":
             
@@ -268,35 +262,3 @@ class RatingDataset(PytorchDataset):
         self.itemId_map = dict((str(k), v) for k, v in temp_dict.items())
 
         return self
-
-
-    """
-        split the dataset into two sub datasets, to create training/validation/testing sets
-        input
-            split_factor: between 0 and 1, default to 0.8
-        output
-            tuple of two RatingDataset, subset of this
-    """
-    def get_split_sets(self, split_factor=0.8, view="user"):        
-
-        first_dataset, second_dataset = None, None
-
-        first_dataset, second_dataset = train_test_split(self.df_data, test_size=1-split_factor)
-
-        return (
-                RatingDataset(
-                    first_dataset,
-                    name=self.name+"_subset",
-                    is_sub_dataset=True,
-                    has_been_normalized=self._has_been_normalized,
-                    gm=self.gm, um=self.um, im=self.im,
-                    view=self._view),
-                    
-                RatingDataset(
-                    second_dataset,
-                    name=self.name+"_subset",
-                    is_sub_dataset=True,
-                    has_been_normalized=self._has_been_normalized,
-                    gm=self.gm, um=self.um, im=self.im,
-                    view=self._view)
-                )

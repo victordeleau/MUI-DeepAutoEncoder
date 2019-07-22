@@ -3,7 +3,7 @@ import logging
 
 from train_autoencoder import train_autoencoder
 from tool.parser import parse
-from tool.logging import set_logging
+from tool.logger import set_logging
 from tool.date import get_day_month_year_hour_minute_second
 
 

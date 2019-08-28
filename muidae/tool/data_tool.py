@@ -56,6 +56,7 @@ class BatchBuilder:
     """
         return N split batches from dataset
     """
+    """
     def get_batches(self, dataset, batch_size, nb_sample_to_process, i):   
 
         output_batches = []
@@ -106,6 +107,28 @@ class BatchBuilder:
             output_batches[i] = np.stack(output_batches[i])
 
         return (*output_batches, remaining)
+    """
+
+
+    """
+        return N split batches from dataset
+    """
+    def get_batches(self, dataset, batch_size, nb_sample_to_process, i):   
+
+        output_batches = []
+
+        # collect batch
+        if batch_size == 1:
+            remaining = 1
+            main_batch = [ dataset[i] ]
+        else:
+            remaining = (
+                batch_size if (i+1)*batch_size < nb_sample_to_process
+                else nb_sample_to_process-(i*batch_size))
+            
+            main_batch = np.stack([dataset[i*batch_size+j] for j in range(remaining)])
+
+        return main_batch, remaining
 
 
 

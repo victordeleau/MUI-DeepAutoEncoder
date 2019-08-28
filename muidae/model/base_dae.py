@@ -139,26 +139,30 @@ class BaseDAE(nn.Module):
         return loss
 
 
+    """
+        select different activation function
+    """
+    """def activation(self, kind):
 
-
-    """def activation(self, input, kind):
         if kind == 'selu':
-            return nn.functional.selu(input)
+            return nn.functional.selu
         elif kind == 'relu':
-            return nn.functional.relu(input)
+            return nn.functional.relu
         elif kind == 'relu6':
-            return nn.functional.relu6(input)
+            return nn.functional.relu6
         elif kind == 'sigmoid':
-            return nn.functional.sigmoid(input)
+            return nn.functional.sigmoid
         elif kind == 'tanh':
-            return nn.functional.tanh(input)
+            return nn.functional.tanh
         elif kind == 'elu':
-            return nn.functional.elu(input)
+            return nn.functional.elu
         elif kind == 'lrelu':
-            return nn.functional.leaky_relu(input)
+            return nn.functional.leaky_relu
         elif kind == 'swish':
-            return input * nn.functional.sigmoid(input)
+            return input * nn.functional.sigmoid
         elif kind == 'none':
             return input
         else:
-            raise ValueError('Unknown activation function')"""
+            raise ValueError('Unknown activation function')
+
+    """

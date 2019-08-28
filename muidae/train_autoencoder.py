@@ -33,7 +33,13 @@ def train_autoencoder(args, output_dir):
 
     dataset = dataset_getter.load_local_dataset(view=args.view, try_load_binary=not args.reload_dataset)
 
-    if args.normalize: dataset.normalize()
+    training_dataset, tmp_dataset = dataset.split(0.6)
+    validation_dataset, testing_dataset = tmp_dataset.split(0.5)
+
+    if args.normalize:
+        training_dataset.mean_normalize()
+        validation_dataset.mean_normalize()
+        testing_dataset.mean_normalize()
     
     nb_example = (dataset.nb_item if dataset.get_view() == "item" else dataset.nb_user)
 
@@ -56,13 +62,13 @@ def train_autoencoder(args, output_dir):
     
     nb_sample_to_process = math.floor(args.redux * nb_example)
 
-    nb_iter = math.floor(nb_sample_to_process / args.batch_size)
+    nb_iter = math.ceil(nb_sample_to_process / args.batch_size)
 
     loss_analyzer = LossAnalyzer(args.max_increasing_cnt, args.max_nan_cnt)
 
     plot_drawer = PlotDrawer()
 
-    batch_builder = BatchBuilder(dataset.get_io_size(), [0.6, 0.2, 0.2], 128)
+    batch_builder = BatchBuilder(dataset.get_io_size(), [0.8, 0.1, 0.1], 128)
 
 
     # training ##############################
@@ -73,7 +79,7 @@ def train_autoencoder(args, output_dir):
     for epoch in range(args.nb_epoch):
 
         training_loss, validation_loss = 0, 0
-        increasing_cnt = 0, 0
+        increasing_cnt, loss_cnt = 0, 0
         epoch_time_start = time.time()
 
         my_base_dae.to(device)
@@ -81,9 +87,14 @@ def train_autoencoder(args, output_dir):
 
         for i in range(nb_iter): 
 
-            bro = batch_builder.get_batches( dataset, args.batch_size, nb_sample_to_process, i )
+            training_batch, remaining = batch_builder.get_batches( training_dataset, args.batch_size, nb_sample_to_process, i )
+            validation_batch, _ = batch_builder.get_batches( validation_dataset, args.batch_size, nb_sample_to_process, i )
 
-            training_batch, validation_batch, _, remaining = bro
+            if np.count_nonzero(training_batch) == 0:
+                #print("nop")
+                continue
+
+            #print( np.count_nonzero(training_batch, 1) )
 
             input_data = Variable(torch.Tensor(np.squeeze(training_batch))).to(device)
             output_data_to_compare = Variable(torch.Tensor(np.squeeze(validation_batch))).to(device)
@@ -93,8 +104,10 @@ def train_autoencoder(args, output_dir):
             training_mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
             validation_mmse_loss = my_base_dae.get_mmse_loss(output_data_to_compare, output_data)
 
-            training_loss += (training_mmse_loss.item() if not loss_analyzer.is_nan(training_mmse_loss.item()) else 0)
-            validation_loss += (validation_mmse_loss.item() if not loss_analyzer.is_nan(validation_mmse_loss.item()) else 0)
+            if not loss_analyzer.is_nan(training_mmse_loss.item()) and not loss_analyzer.is_nan(validation_mmse_loss.item()):
+                training_loss += training_mmse_loss.item()
+                validation_loss += validation_mmse_loss.item()
+                loss_cnt += 1
                 
             optimizer.zero_grad()
 
@@ -106,8 +119,8 @@ def train_autoencoder(args, output_dir):
 
             args.log.debug("Training loss %0.6f" %( math.sqrt(training_mmse_loss.item()) ) )
 
-        training_rmses.append( math.sqrt(training_loss/nb_iter) )
-        validation_rmses.append( math.sqrt(validation_loss/nb_iter) )
+        training_rmses.append( math.sqrt(training_loss/ loss_cnt) )
+        validation_rmses.append( math.sqrt(validation_loss/ loss_cnt ) )
 
         args.log.info('epoch [{:3d}/{:3d}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.2f}s'.format(
             epoch + 1,
@@ -123,7 +136,7 @@ def train_autoencoder(args, output_dir):
 
     # testing ##############################
 
-    training_loss, testing_loss = 0, 0
+    training_loss, testing_loss, loss_cnt = 0, 0, 0
     testing_time_start = time.time()
 
     my_base_dae.to(device)
@@ -131,7 +144,8 @@ def train_autoencoder(args, output_dir):
 
     for i in range(nb_iter):
 
-        training_batch, _, testing_batch, remaining = batch_builder.get_batches( dataset, args.batch_size, nb_sample_to_process, i )
+        training_batch, remaining = batch_builder.get_batches( training_dataset, args.batch_size, nb_sample_to_process, i )
+        testing_batch, _ = batch_builder.get_batches( testing_dataset, args.batch_size, nb_sample_to_process, i )
 
         input_data = Variable(torch.Tensor(np.squeeze(training_batch))).to(device)
         output_data_to_compare = Variable(torch.Tensor(np.squeeze(testing_batch))).to(device)
@@ -141,14 +155,16 @@ def train_autoencoder(args, output_dir):
         training_mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
         testing_mmse_loss = my_base_dae.get_mmse_loss(output_data_to_compare, output_data)
 
-        training_loss += (training_mmse_loss.item() if not loss_analyzer.is_nan(training_mmse_loss.item()) else 0)
-        testing_loss += (testing_mmse_loss.item() if not loss_analyzer.is_nan(testing_mmse_loss.item()) else 0)
+        if not loss_analyzer.is_nan(training_mmse_loss.item()) and not loss_analyzer.is_nan(testing_mmse_loss.item()):
+                training_loss += training_mmse_loss.item()
+                testing_loss += testing_mmse_loss.item()
+                loss_cnt += 1
 
         input_data.detach_()
 
     logging.info("training rmse:{:.6f}, testing rmse:{:.6f}, testing time of {:0.2f}s".format(
-        math.sqrt(training_loss/nb_iter),
-        math.sqrt(testing_loss/nb_iter),
+        math.sqrt(training_loss/loss_cnt),
+        math.sqrt(testing_loss/loss_cnt),
         (time.time() - testing_time_start)))
 
     args.log.info("Testing has ended.\n")

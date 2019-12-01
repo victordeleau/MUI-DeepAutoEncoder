@@ -15,7 +15,3 @@ To give it a shot, for example:
     clear && python3 main.py --view item --normalize --zsize 32 --batch_size 8 --normalize --redux 1 --learning_rate 0.0001
 ````
 
-
-The CLI interface :
-
-![demo_screenshot](demo_screenshot.png)

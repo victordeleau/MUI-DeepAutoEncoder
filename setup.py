@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='muidae',
+    name='codae',
     version='1.0',
-    packages=["muidae"]
+    packages=["codae"]
 )

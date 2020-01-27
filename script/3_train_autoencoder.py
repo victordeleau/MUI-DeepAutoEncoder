@@ -2,28 +2,65 @@
 
 import sys
 import time
-import torch
 import math
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-import numpy as np
-from torch.autograd import Variable
 import gc
 import psutil
 import logging
 import time
 import json
 
-from tool.logger import set_logging, display_info
-from tool.metering import get_object_size, get_rmse, LossAnalyzer, PlotDrawer, export_parameters_to_json
-from tool.parser import parse
-from tool.date import get_day_month_year_hour_minute_second
-from tool.data_tool import BatchBuilder
-from dataset.dataset_getter import DatasetGetter
-from model.base_dae import BaseDAE
+from torch.autograd import Variable
+from torch.utils.data import Dataset, DataLoader
+import torch.nn as nn
+import torch
+import numpy as np
+
+
+from codea.tool import set_logging, display_info
+from codea.tool import get_object_size, get_rmse, LossAnalyzer, PlotDrawer, export_parameters_to_json
+from codea.tool import parse
+from codea.tool import get_day_month_year_hour_minute_second
+from codea.tool import BatchBuilder
+from codea.dataset import DatasetGetter
+from codea.model import Autoencoder
 
 
 def train_autoencoder(args, output_dir):
+    """
+    Script to train an autoencoder
+    """
+
+    # load dataset of embeddings
+
+    # normalize the dataset
+
+    # load model
+    model = Autoencoder(
+        io_size=io_size,
+        z_size=args.z_size,
+        nb_input_layer=args.nb_layer,
+        nb_output_layer=args.nb_layer,
+        steep_layer_size=True) 
+
+    use_gpu = torch.cuda.is_available()
+    if use_gpu:
+        args.log.info("Cuda available, loading GPU device")
+    else:
+        args.log.info("No Cuda device available, using CPU") 
+    device = torch.device("cuda:0" if use_gpu else "cpu")
+
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=args.learning_rate,
+        weight_decay=args.regularization)
+
+
+
+
+
+
+
+    ################################################################################################
 
     dataset_getter = DatasetGetter()
 

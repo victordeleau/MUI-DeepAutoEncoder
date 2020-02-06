@@ -4,52 +4,40 @@ import json
 
 import torchvision.models as models
 
+def parse():
 
-class DatasetEncoder(object):
-    """
-    A class to extract embeddings out of a dataset using an autoencoder, or any other feature extractor
-    """
+    parser = argparse.ArgumentParser(
+        description='Encode dataset of image.')
 
-    def __init__(self, output_path, model="resnet18"):
-        """
-        input
-            output_path: str
-                path to output folder on disk
-            model: str
-                name of the pretrained model to use
-        """
+    parser.add_argument('--image_path', type=str)
 
-        self.output_path = output_path
-        self.model = model
+    parser.add_argument('--output_path', type=str)
 
-        if not os.path.exists(output_path):
-            os.makedirs(output_path)
+    parser.add_argument('--sub_dir_scan', type=bool, default=True)
 
-        if model == "resnet18":
-            self.model = models.resnet18()
-        elif model == "resnet50":
-            self.model = models.resnet50()
-        else:
-            raise Exception("Model name not found (resnet18/resnet50).")
+    return parser.parse_args()
 
 
-    def to_json(self, image_path, sub_dir=True):
-        """
-        encode all image in path using pretrained model
-        input
-            image_path: str
-                path to image dir on disk
-            sub_dir: boolean
-                look at sub folder for image or not (default: True)
-        """
+if __name__ == "__main__":
 
-        # for all image in dir (and sub dir if sub_dir=True)
+    args = parse()
 
-        # encode image
+    if not os.path.exists(args.output_path):
+        os.makedirs(args.output_path)
 
-        # write to json
+    if args.model == "resnet18":
+        model = models.resnet18()
+    elif args.model == "resnet50":
+        model = models.resnet50()
+    else:
+        raise Exception("Model name not found (resnet18/resnet50).")
 
+    # list all image in directory
+    image_list = glob.glob(args.image_path, recursive=args.sub_dir_scan)
 
-    def to_hdf5(self, image_path):
+    result = {}
+
+    # for all images
+    for image_name.split(".")[0] in image_list:
 
         pass

@@ -1,62 +1,76 @@
 
-import sys, os
+import sys, os, re
 import json
+import argparse
 import glob
 
-class DatasetSegmenter(object):
-    """
-    A class to segment a dataset of images into contained images.
-    """
+from PIL import Image
 
-    def __init__(self, output_folder):
-
-        self.output_folder = output_folder
-
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
+from codae.dataset import extract_part_from_polygons
 
 
-    def from_polygons(self, image_path, annotation_path):
-        """
-        extract parts from a set of images using provided polygons
-        input
-            image_path: str
-                path of image folder on disk
-            annotation_path: str
-                path of json annotation file on disk
-        """
+def parse():
 
-        # get list of image
-        image_list = glob.glob(image_path)
+    parser = argparse.ArgumentParser(
+        description='Segment dataset of images into parts.')
 
-        # get annotation dict
-        with open() as f:
-            annotation = json.load(f)
+    parser.add_argument('--image_path', type=str, required=True)
 
-        # for all images
-        for image_name in image_list:
+    parser.add_argument('--output_path', type=str, required=True)
 
-            image_name = image_name.split(".")[0]
+    parser.add_argument('--annotation_path', type=str, required=True)
 
-            # create sub directory for image
-            os.makedirs(image_name)
+    parser.add_argument('--sub_dir_scan', type=bool, default=True)
 
-            # for all apparel in image
-            for _ in annotation[]:
-
-                # extract cropped and masked apparel
-
-                # write to disk
-
-                pass
+    return parser.parse_args()
 
 
-    def from_mask_rcnn(self, image_path):
-        """
-        extract parts from a set of images using mask rcnn model
-        input
-            image_path: str
-                path of image folder on disk
-        """
+if __name__ == "__main__":
 
-        pass
+    args = parse()
+
+    # list all image in directory
+    image_list = glob.glob(os.path.join(args.image_path, "*.jpg"), recursive=args.sub_dir_scan)
+
+    # get annotation dict
+    annotation_list = glob.glob(os.path.join(args.annotation_path, "*.json"), recursive=args.sub_dir_scan)
+   
+    annotation = {}
+    r = re.compile("item*")
+    for annotation_file in annotation_list:
+
+        image_id = annotation_file.split(".")[0].split("/")[-1]
+
+        with open(annotation_file) as f:
+            annotation[image_id] = json.load(f)
+
+        output_sub_dir = os.path.join(args.output_path, image_id)
+        if not os.path.exists(output_sub_dir):
+            os.makedirs(output_sub_dir)
+
+        # load image
+        image = Image.open(os.path.join(args.image_path, image_id+".jpg"))
+
+        # for each annotated item in the image
+        for item in list(filter(r.match, annotation[image_id].keys())):
+
+            print("Segmenting image ID %s." %image_id)
+
+            # from (x1, y1, x2, y2, ...) to ((x1, y1), (x2, y2), ...)
+            # only first segmentation mask is selected (full)
+            seg = annotation[image_id][item]["segmentation"][0]
+            polygon = [[seg[i*2], seg[(i*2)+1]] for i in range(int(len(seg)/2))]
+
+            # extract part from polygon
+            extracted_part = extract_part_from_polygons( image, [polygon] )
+
+            output_file_name = image_id+"_"+annotation[image_id][item]["category_name"].replace(" ", "_")+".jpg"
+
+            # export extracted part to disk in sub folder
+            try:
+                Image.fromarray(extracted_part).save(
+                    os.path.join(output_sub_dir, output_file_name))
+            except:
+                print("Error while exporting image ID %s to disk." %image_id)
+    
+    print("DONE")

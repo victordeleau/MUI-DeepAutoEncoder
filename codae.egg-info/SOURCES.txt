@@ -1,0 +1,7 @@
+README.md
+setup.py
+codae/__init__.py
+codae.egg-info/PKG-INFO
+codae.egg-info/SOURCES.txt
+codae.egg-info/dependency_links.txt
+codae.egg-info/top_level.txt

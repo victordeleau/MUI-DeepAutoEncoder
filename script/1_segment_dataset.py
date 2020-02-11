@@ -36,14 +36,17 @@ if __name__ == "__main__":
     annotation_list = glob.glob(os.path.join(args.annotation_path, "*.json"), recursive=args.sub_dir_scan)
    
     annotation = {}
-    r = re.compile("item*")
-    for annotation_file in annotation_list:
+    r = re.compile("item[0-9]+")
+    for annotation_file in annotation_list: # for all image/annotation
 
         image_id = annotation_file.split(".")[0].split("/")[-1]
 
+        # open annotation file
         with open(annotation_file) as f:
             annotation[image_id] = json.load(f)
+        annotation[image_id]["item"] = {}
 
+        # make sure output surb dir exists
         output_sub_dir = os.path.join(args.output_path, image_id)
         if not os.path.exists(output_sub_dir):
             os.makedirs(output_sub_dir)
@@ -52,25 +55,41 @@ if __name__ == "__main__":
         image = Image.open(os.path.join(args.image_path, image_id+".jpg"))
 
         # for each annotated item in the image
+        part_id = 0
         for item in list(filter(r.match, annotation[image_id].keys())):
 
             print("Segmenting image ID %s." %image_id)
 
             # from (x1, y1, x2, y2, ...) to ((x1, y1), (x2, y2), ...)
-            # only first segmentation mask is selected (full)
+            # only first segmentation mask is selected (full segmentation)
             seg = annotation[image_id][item]["segmentation"][0]
             polygon = [[seg[i*2], seg[(i*2)+1]] for i in range(int(len(seg)/2))]
 
             # extract part from polygon
-            extracted_part = extract_part_from_polygons( image, [polygon] )
-
-            output_file_name = image_id+"_"+annotation[image_id][item]["category_name"].replace(" ", "_")+".jpg"
-
-            # export extracted part to disk in sub folder
             try:
+                extracted_part = extract_part_from_polygons( image, [polygon] )
+            except:
+                print("Error while extracting parts from polygons, image ID %s." %image_id)
+
+            part_id_str = str(part_id).zfill(2)
+
+            output_file_name = image_id+"_"+part_id_str+"_"+annotation[image_id][item]["category_name"].replace(" ", "_")+".jpg"
+
+            try: 
+                # export extracted part to disk in sub folder
                 Image.fromarray(extracted_part).save(
                     os.path.join(output_sub_dir, output_file_name))
+
+                # rename "item%d" key to "part_id" key
+                annotation[image_id]["item"][part_id_str] = annotation[image_id][item]
+                annotation[image_id].pop(item, None)
+
+                part_id += 1
             except:
                 print("Error while exporting image ID %s to disk." %image_id)
+
+    # export modified annotation file to disk
+    with open(os.path.join(args.output_path, "annotation_seg.json"), "w+") as f:
+        f.write( json.dumps(annotation) )
     
     print("DONE")

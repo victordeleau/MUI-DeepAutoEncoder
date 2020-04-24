@@ -1,6 +1,6 @@
 # Mixed User Item Deep Auto Encoder
 
-import sys
+import sys, os
 import time
 import math
 import gc
@@ -8,13 +8,13 @@ import psutil
 import logging
 import time
 import json
+import argparse
 
 from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import torch
 import numpy as np
-
 
 from codea.tool import set_logging, display_info
 from codea.tool import get_object_size, get_rmse, LossAnalyzer, PlotDrawer, export_parameters_to_json
@@ -25,10 +25,19 @@ from codea.dataset import DatasetGetter
 from codea.model import Autoencoder
 
 
-def train_autoencoder(args, output_dir):
-    """
-    Script to train an autoencoder
-    """
+def parse():
+
+    parser = argparse.ArgumentParser(
+        description='Train denoising autoencoder.')
+
+    parser.add_argument('--embedding_path', type=str, required=True)
+
+    parser.add_argument('--output_path', type=str, required=True)
+
+    return parser.parse_args()
+
+
+def train_dae(args, output_dir):
 
     # load dataset of embeddings
 
@@ -221,7 +230,7 @@ if __name__ == "__main__":
 
     vars(args)["log"] = set_logging(logging_level=(logging.DEBUG if args.debug else logging.INFO))
 
-    args.log.info("Autoencoder trainer has started.")
+    args.log.info("Training has started.")
 
     output_dir = "../out/autoencoder_training_" + get_day_month_year_hour_minute_second()
     

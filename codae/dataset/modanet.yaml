@@ -1,0 +1,3 @@
+DATASET_NAME: modanet
+IMAGE_PATH: image/
+ANNOTATION_FILE: annotation/modanet_annotation_train.json

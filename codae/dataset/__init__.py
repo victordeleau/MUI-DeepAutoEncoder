@@ -1,3 +1,1 @@
-#from .dataset_getter import DatasetGetter
-#from .rating_dataset import RatingDataset
-from .mask_extractor import extract_part_from_polygons, extract_parts_from_mask
+from codae.dataset.deepfashion2_to_coco import df2_to_coco

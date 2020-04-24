@@ -23,7 +23,6 @@ class FeatureExtractor(object):
         else:
             raise Exception("Unknown model name.")
 
-
         # extract avgpool layer
         self.layer = self.model._modules.get('avgpool')
 

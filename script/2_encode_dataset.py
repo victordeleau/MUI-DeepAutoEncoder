@@ -1,8 +1,11 @@
-
 import sys, os
 import json
+import glob
+import argparse
 
 from PIL import Image
+
+from codae.processing import FeatureExtractor
 
 
 def parse():
@@ -18,8 +21,6 @@ def parse():
 
     parser.add_argument('--model', type=str, default="resnet50")
 
-    parser.add_argument('--annotation_s1', type=str, required=True)
-
     return parser.parse_args()
 
 
@@ -30,31 +31,33 @@ if __name__ == "__main__":
     if not os.path.exists(args.output_path):
         os.makedirs(args.output_path)
 
-    if args.model == "resnet18":
-        model = models.resnet18(pretrained=True)
-    elif args.model == "resnet50":
-        model = models.resnet50(pretrained=True)
-    else:
+    if args.model != "resnet18" and args.model != "resnet50":
         raise Exception("Model name not found (resnet18/resnet50).")
 
+    # invoque feature extractor
+    fe = FeatureExtractor(args.model)
+
     # list all image in directory
-    image_list = glob.glob(args.image_path, recursive=args.sub_dir_scan)
+    image_path_list = glob.glob(args.image_path, recursive=args.sub_dir_scan)
 
-    # open annotation_seg
-    with open(args.annotation_s1, "r") as f:
-        annotation_s1 = json.load(f)
+    # encode images in dictionnary
 
-    # instantiate feature extractor model
-    feature_extractor = FeatureExtractor("resnet50")
+    output = {}
+    for image_path in image_path_list:
 
-    result = {}
+        # get image/part ID
+        file_name = image_path.split("/")[-1].split(".")[-2]
+        image_id = file_name.split("_")[0]
+        part_id = file_name.split("_")[1]
 
-    for image_id in annotation_s1.keys(): # for all images
+        # read image
+        image = Image.open(image_path)
 
-        for part_id in annotation_s1[image_id]["item"]: # for all parts
+        # add to dictionnary
+        if not image_id in output.keys():
+            output[image_id] = []
+        output[image_id] += fe.encode()
 
-            # read image part
-            
-
-            # extract feature vector
-            image_vector = feature_extractor.encode(image)
+    # export dictionnary to file
+    with open(os.path.join(args.output_path, "encoded.json"), "w+") as f:
+        f.write( json.dumps(output) )

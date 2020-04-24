@@ -30,3 +30,11 @@
 ## IV - Complementarity inference
 
 ```python3 script/4_complementarity_inference.py```
+
+
+# Dataset requirement
+
+- Full body
+- At least 3 categories (top/bottom/shoes)
+- Simple clothes
+- Men only

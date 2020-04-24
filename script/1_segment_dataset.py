@@ -5,6 +5,7 @@ import argparse
 import glob
 
 from PIL import Image
+import yaml
 
 from codae.dataset import extract_part_from_polygons
 
@@ -12,15 +13,13 @@ from codae.dataset import extract_part_from_polygons
 def parse():
 
     parser = argparse.ArgumentParser(
-        description='Segment dataset of images into parts.')
-
-    parser.add_argument('--image_path', type=str, required=True)
+        description='Segment dataset of images into parts. Accept COCO annotation file as input.')
 
     parser.add_argument('--output_path', type=str, required=True)
 
-    parser.add_argument('--annotation_path', type=str, required=True)
+    parser.add_argument('--dataset_name', type=str, default="modanet")
 
-    parser.add_argument('--sub_dir_scan', type=bool, default=True)
+    parser.add_argument('--dataset_path', type=str, required=True)
 
     return parser.parse_args()
 
@@ -29,11 +28,82 @@ if __name__ == "__main__":
 
     args = parse()
 
+    if args.dataset != "deepfashion2"\
+        and args.dataset != "modanet"\
+        and args.dataset != "imaterialist":
+            raise Exception("Provided dataset not supported (deepfashion2/modanet/imaterialist)")
+
+
+    # open annotation file & dataset info ######################################
+
+    if args.dataset_name == "deepfashion2":
+
+        if not os.path.exists("annotation.json"):
+
+            print("Consolidating deepfashion2 to COCO annotation format ...")
+            from codae.dataset import df2_to_coco
+            df2_to_coco()
+            print("... done.")
+
+        with open(args.dataset_path, 'r') as f:
+            COCO_annotation = json.load(f)
+
+        info = yaml.load(
+            os.path.dirname(__file__) + "../codae/dataset/deepfashion2.yaml")
+
+    if args.dataset_name == "modanet":
+        try:
+            with open(args.dataset_path + "TODO", 'r') as f:
+                    COCO_annotation = json.load(f)
+        except:
+            raise Exception("Annotatio file for Modanet not found")
+
+        info = yaml.load(
+            os.path.dirname(__file__) + "../codae/dataset/modanet.yaml")
+
+    if args.dataset_name == "imaterialist":
+        try:
+            with open(args.dataset_path + "TODO", 'r') as f:
+                    COCO_annotation = json.load(f)
+        except:
+            raise Exception("Annotation file for Imaterialist not found")
+
+        info = yaml.load(
+            os.path.dirname(__file__) + "../codae/dataset/imaterialist.yaml")
+
+    # create output directory
+    if not os.path.exists(args.output_path):
+        os.makedirs(args.output_path)
+
+
+    # process images ###########################################################
+
     # list all image in directory
-    image_list = glob.glob(os.path.join(args.image_path, "*.jpg"), recursive=args.sub_dir_scan)
+    image_list = glob.glob(os.path.join(
+        info["IMAGE_PATH"], "*.jpg"),
+        recursive=True)
 
     # get annotation dict
-    annotation_list = glob.glob(os.path.join(args.annotation_path, "*.json"), recursive=args.sub_dir_scan)
+    annotation = glob.glob( os.path.join(
+        info["ANNOTATION_FILE"],
+        "*.json"),
+        recursive=True)
+
+    r = re.compile("item[0-9]+")
+    for image_path in image_list:
+
+        # get image ID
+        image_id = 
+
+
+
+
+
+
+
+
+
+
    
     annotation = {}
     r = re.compile("item[0-9]+")

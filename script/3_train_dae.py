@@ -64,12 +64,7 @@ def train_dae(args, output_dir):
         weight_decay=args.regularization)
 
 
-
-
-
-
-
-    ################################################################################################
+    ############################################################################
 
     dataset_getter = DatasetGetter()
 
@@ -117,7 +112,8 @@ def train_dae(args, output_dir):
     batch_builder = BatchBuilder(dataset.get_io_size(), [0.8, 0.1, 0.1], 128)
 
 
-    # training ##############################
+    ############################################################################
+    # training #################################################################
 
     training_time_start = time.time()
     training_rmses, validation_rmses = [], []
@@ -180,7 +176,8 @@ def train_dae(args, output_dir):
             break
 
 
-    # testing ##############################
+    ############################################################################
+    # testing ##################################################################
 
     training_loss, testing_loss, loss_cnt = 0, 0, 0
     testing_time_start = time.time()

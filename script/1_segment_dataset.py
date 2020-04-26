@@ -1,13 +1,17 @@
+# extract parts from dataset of images with COCO annotation format
 
 import sys, os, re
 import json
 import argparse
 import glob
+import pathlib
+import shutil
 
+import numpy as np
 from PIL import Image
 import yaml
 
-from codae.dataset import extract_part_from_polygons
+from codae.processing import extract_part_from_polygons
 
 
 def parse():
@@ -28,9 +32,9 @@ if __name__ == "__main__":
 
     args = parse()
 
-    if args.dataset != "deepfashion2"\
-        and args.dataset != "modanet"\
-        and args.dataset != "imaterialist":
+    if args.dataset_name != "deepfashion2"\
+        and args.dataset_name != "modanet"\
+        and args.dataset_name != "imaterialist":
             raise Exception("Provided dataset not supported (deepfashion2/modanet/imaterialist)")
 
 
@@ -38,128 +42,143 @@ if __name__ == "__main__":
 
     if args.dataset_name == "deepfashion2":
 
-        if not os.path.exists("annotation.json"):
+        annotation_path = os.path.join( args.dataset_path, "train_coco_annotation.json")
+
+        if not os.path.exists(annotation_path):
 
             print("Consolidating deepfashion2 to COCO annotation format ...")
             from codae.dataset import df2_to_coco
-            df2_to_coco()
+            df2_to_coco(args.dataset_path)
             print("... done.")
 
-        with open(args.dataset_path, 'r') as f:
+        with open(annotation_path, 'r') as f:
             COCO_annotation = json.load(f)
 
-        info = yaml.load(
-            os.path.dirname(__file__) + "../codae/dataset/deepfashion2.yaml")
+        info_path = os.path.join(
+            pathlib.Path(__file__).parent.absolute(),
+            "../codae/dataset/deepfashion2.yaml" )
+
+        with open(info_path, 'r') as stream:
+            try:
+                info = yaml.safe_load(stream)
+            except yaml.YAMLError as e:
+                raise e
 
     if args.dataset_name == "modanet":
         try:
             with open(args.dataset_path + "TODO", 'r') as f:
-                    COCO_annotation = json.load(f)
+                COCO_annotation = json.load(f)
         except:
             raise Exception("Annotatio file for Modanet not found")
 
-        info = yaml.load(
-            os.path.dirname(__file__) + "../codae/dataset/modanet.yaml")
+        info_path = os.path.join(
+            pathlib.Path(__file__).parent.absolute(),
+            "../codae/dataset/modanet.yaml" )
+
+        with open(info_path, 'r') as stream:
+            try:
+                info = yaml.safe_load(stream)
+            except yaml.YAMLError as e:
+                raise e
 
     if args.dataset_name == "imaterialist":
         try:
             with open(args.dataset_path + "TODO", 'r') as f:
-                    COCO_annotation = json.load(f)
+                COCO_annotation = json.load(f)
         except:
             raise Exception("Annotation file for Imaterialist not found")
 
-        info = yaml.load(
-            os.path.dirname(__file__) + "../codae/dataset/imaterialist.yaml")
+        info_path = os.path.join(
+            pathlib.Path(__file__).parent.absolute(),
+            "../codae/dataset/imaterialist.yaml" )
+
+        with open(info_path, 'r') as stream:
+            try:
+                info = yaml.safe_load(stream)
+            except yaml.YAMLError as e:
+                raise e
+
+    # empty output directory
+    choice = input("Erase output directory ? (y/Y/n/N)")
+    if choice == "y" or choice == "Y":
+        print("Erasing output directory ...")
+        shutil.rmtree(args.output_path, ignore_errors=True) 
+        print("... done.")
 
     # create output directory
     if not os.path.exists(args.output_path):
         os.makedirs(args.output_path)
 
 
+    # prepare annotations ######################################################
+
+    # index annotations per image ID
+    annotation_index = {}
+    for ann in COCO_annotation["annotations"]:
+        if not ann["image_id"] in annotation_index:
+            annotation_index[ann["image_id"]] = []
+        annotation_index[ann["image_id"]].append( ann )
+
+    # index category by ID
+    category_index = {}
+    for cat in COCO_annotation["categories"]:
+        category_index[cat["id"]] = cat["name"]
+
+
     # process images ###########################################################
 
-    # list all image in directory
-    image_list = glob.glob(os.path.join(
-        info["IMAGE_PATH"], "*.jpg"),
-        recursive=True)
+    for image_section in COCO_annotation["images"]: # for all image in json
 
-    # get annotation dict
-    annotation = glob.glob( os.path.join(
-        info["ANNOTATION_FILE"],
-        "*.json"),
-        recursive=True)
-
-    r = re.compile("item[0-9]+")
-    for image_path in image_list:
-
-        # get image ID
-        image_id = 
-
-
-
-
-
-
-
-
-
-
-   
-    annotation = {}
-    r = re.compile("item[0-9]+")
-    for annotation_file in annotation_list: # for all image/annotation
-
-        image_id = annotation_file.split(".")[0].split("/")[-1]
-
-        # open annotation file
-        with open(annotation_file) as f:
-            annotation[image_id] = json.load(f)
-        annotation[image_id]["item"] = {}
+        image_id = image_section["id"] # get image ID
 
         # make sure output surb dir exists
-        output_sub_dir = os.path.join(args.output_path, image_id)
+        output_sub_dir = os.path.join(args.output_path, str(image_id))
         if not os.path.exists(output_sub_dir):
             os.makedirs(output_sub_dir)
 
-        # load image
-        image = Image.open(os.path.join(args.image_path, image_id+".jpg"))
+        # open image
+        image = Image.open(
+            os.path.join(
+                args.dataset_path,
+                info["IMAGE_PATH"],
+                image_section["file_name"]))
 
-        # for each annotated item in the image
         part_id = 0
-        for item in list(filter(r.match, annotation[image_id].keys())):
+        for ann in annotation_index[image_id]:
 
-            print("Segmenting image ID %s." %image_id)
+            print("Segmenting image ID %d" %image_id, end="\r")
 
-            # from (x1, y1, x2, y2, ...) to ((x1, y1), (x2, y2), ...)
-            # only first segmentation mask is selected (full segmentation)
-            seg = annotation[image_id][item]["segmentation"][0]
-            polygon = [[seg[i*2], seg[(i*2)+1]] for i in range(int(len(seg)/2))]
+            image_size = image.size
 
-            # extract part from polygon
-            try:
-                extracted_part = extract_part_from_polygons( image, [polygon] )
+            try: # extract part from polygon
+
+                p = ann["segmentation"][0]
+
+                # from (x1, y1, x2, y2, ...) to ((x1, y1), (x2, y2), ...)
+                p = [[p[i*2], p[(i*2)+1]] for i in range(int(len(p)/2))]
+
+                extracted_part = extract_part_from_polygons( image, [p], crop=True )
+
             except:
-                print("Error while extracting parts from polygons, image ID %s." %image_id)
+                print("Error while extracting parts from polygons, image ID %d." %image_id)
+
+            m = np.mean(extracted_part)
+            if m < 0.01: # filter black images
+                print("Encountered black image mean %f. Ignoring ..." %m)
+                continue
 
             part_id_str = str(part_id).zfill(2)
 
-            output_file_name = image_id+"_"+part_id_str+"_"+annotation[image_id][item]["category_name"].replace(" ", "_")+".jpg"
+            category_id = ann["category_id"]
+
+            output_file_name = str(image_id) + "_" + part_id_str + "_" + category_index[ann["category_id"]].replace(" ", "_") + ".jpg"
 
             try: 
                 # export extracted part to disk in sub folder
                 Image.fromarray(extracted_part).save(
                     os.path.join(output_sub_dir, output_file_name))
-
-                # rename "item%d" key to "part_id" key
-                annotation[image_id]["item"][part_id_str] = annotation[image_id][item]
-                annotation[image_id].pop(item, None)
-
                 part_id += 1
             except:
-                print("Error while exporting image ID %s to disk." %image_id)
-
-    # export modified annotation file to disk
-    with open(os.path.join(args.output_path, "annotation_seg.json"), "w+") as f:
-        f.write( json.dumps(annotation) )
+                print("Error while exporting image ID %d to disk." %image_id)
     
-    print("DONE")
+    print("... done.")

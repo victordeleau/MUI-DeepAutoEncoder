@@ -12,7 +12,7 @@ from PIL import Image
 
 class FeatureExtractor(object):
 
-    def __init__(self, model="resnet50"):
+    def __init__(self, model="resnet18"):
 
         self.model_name = model
 
@@ -23,25 +23,33 @@ class FeatureExtractor(object):
         else:
             raise Exception("Unknown model name.")
 
+        if torch.cuda.is_available():
+            self.model.cuda()
+
+        # create output vector
+        self.output_tensor = torch.zeros(512)
+
+        def _copy_last_layer(m, i, o):
+            """
+            A hook to extract data from the last layer of the model
+            """
+            
+            self.output_tensor.copy_(o.data.squeeze())
+
         # extract avgpool layer
         self.layer = self.model._modules.get('avgpool')
+
+        # register hook to access last layer data
+        hook = self.layer.register_forward_hook(_copy_last_layer)
 
         # to avoid dropouts layers are inactive
         self.model.eval() 
 
-        # extract image preprocessing functions
-        self._scale = transforms.Scale((224, 224))
+        # image preprocessing functions
+        self._scale = transforms.Resize((224, 224))
         self._normalize = transforms.Normalize(
             mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         self._to_tensor = transforms.ToTensor()
-
-
-    def _copy_last_layer(self, i, o):
-        """
-        A hook to extract data from the last layer of the model
-        """
-        
-        output_tensor.copy_(o.data)
 
 
     def encode(self, image):
@@ -54,23 +62,19 @@ class FeatureExtractor(object):
         """
 
         # make sure image is in PIL format
-        assert(isinstance(image, Image))
+        assert(isinstance(image, Image.Image))
 
-        input_tensor = Variable( # image preprocessing
+        # if too small, resize
+        size = image.size
+        if size[0] < 224 or size[1] < 224:
+            image = self._scale(image)
+
+        # image preprocessing
+        input_tensor = Variable( 
             self._normalize(
-                self._to_tensor(
-                    self._scale(image))).unsqueeze(0))
+                self._to_tensor(image))
+                    .unsqueeze(0)).cuda()
 
-        # create output vector
-        output_tensor = torch.zeros(512)
+        self.model(input_tensor) # encode image
 
-        # register hook to access last layer data
-        hook = self.layer.register_forward_hook(self._copy_last_layer)
-
-        # encode image
-        self.model(input_tensor)
-
-        # detach hook
-        hook.remove()
-
-        return output_tensor.data.numpy()
+        return self.output_tensor.data.numpy()

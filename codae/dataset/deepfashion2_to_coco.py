@@ -110,7 +110,7 @@ def df2_to_coco(dataset_path):
     })
 
     sub_index = 0 # index of ground truth instance
-    for num in range(1,191965):
+    for num in range(1,191961):
 
         working_path = os.path.join(dataset_path, "train/")
 
@@ -122,6 +122,8 @@ def df2_to_coco(dataset_path):
 
         image = Image.open(image_path)
         width, height = image.size
+
+        print(image_name, end="\r")
 
         with open(json_path, 'r') as f:
 
@@ -247,7 +249,7 @@ def df2_to_coco(dataset_path):
 
 
     # write consolidated json to disk
-    with open(os.paths.join(dataset_path, "train_coco_annotation.json"), 'w') as f:
+    with open(os.path.join(dataset_path, "train_coco_annotation.json"), 'w') as f:
         json.dump(dataset, f)
 
 

@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 
 
-def extract_parts_from_mask(image, mask_image, labels, boxes):
+def extract_parts_from_mask(image, mask_image, labels, boxes, crop=False):
 
     """
     Extract each detected parts (crop + blackened background)
@@ -37,16 +37,17 @@ def extract_parts_from_mask(image, mask_image, labels, boxes):
         part_masked = part_masked.reshape([shape[0], shape[1], 3])
 
         # crop using bounding box
-        part_masked_cropped = part_masked[int(boxes[i][1]):int(boxes[i][3]), int(boxes[i][0]):int(boxes[i][2]), :]
+        if crop:
+            part_masked = part_masked[int(boxes[i][1]):int(boxes[i][3]), int(boxes[i][0]):int(boxes[i][2]), :]
 
         extracted_parts.append(\
-            cv2.cvtColor(part_masked_cropped, cv2.COLOR_BGR2RGB))
+            cv2.cvtColor(part_masked, cv2.COLOR_BGR2RGB))
 
     return extracted_parts
 
 
 
-def extract_part_from_polygons(image, polygons):
+def extract_part_from_polygons(image, polygons, crop=False):
     """
     extract each part in the image using a list of polygons
     input
@@ -81,6 +82,9 @@ def extract_part_from_polygons(image, polygons):
         max([p[1] for p in polygon])]
 
     # crop extracted part according to bbox
-    return extracted_part[
-                int(bbox[1]):int(bbox[3]),
-                int(bbox[0]):int(bbox[2]),:]
+    if crop:
+        extracted_part = extracted_part[
+            int(bbox[1]):int(bbox[3]),
+            int(bbox[0]):int(bbox[2]),:]
+
+    return extracted_part

@@ -38,3 +38,11 @@
 - At least 3 categories (top/bottom/shoes)
 - Simple clothes
 - Men only
+
+
+# Dataset characteristics
+
+## DeepFashion2
+
+Number of valid segmentation mask: 
+Number of images with more than 3 valid segmentation mask: 3324

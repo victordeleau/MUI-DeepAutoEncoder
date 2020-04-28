@@ -9,6 +9,8 @@ import logging
 import time
 import json
 import argparse
+import ast
+import yaml
 
 from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
@@ -16,13 +18,13 @@ import torch.nn as nn
 import torch
 import numpy as np
 
-from codea.tool import set_logging, display_info
-from codea.tool import get_object_size, get_rmse, LossAnalyzer, PlotDrawer, export_parameters_to_json
-from codea.tool import parse
-from codea.tool import get_day_month_year_hour_minute_second
-from codea.tool import BatchBuilder
-from codea.dataset import DatasetGetter
-from codea.model import Autoencoder
+from codae.tool import set_logging, display_info
+from codae.tool import get_object_size, get_rmse, LossAnalyzer, PlotDrawer, export_parameters_to_json
+from codae.tool import parse
+from codae.tool import get_day_month_year_hour_minute_second
+from codae.tool import BatchBuilder
+from codae.dataset import DatasetGetter
+from codae.model import Autoencoder
 
 
 def parse():
@@ -33,6 +35,8 @@ def parse():
     parser.add_argument('--embedding_path', type=str, required=True)
 
     parser.add_argument('--output_path', type=str, required=True)
+
+    parser.add_argument('--config', type=str, required=True)
 
     return parser.parse_args()
 
@@ -213,7 +217,8 @@ def train_dae(args, output_dir):
     args.log.info("Testing has ended.\n")
 
 
-    # plotting and saving ##############################
+    ############################################################################
+    # plotting and saving ######################################################
 
     plot_drawer.add( data=[ training_rmses, validation_rmses ], title="RMSE", legend=["training rmse", "validation_rmse"], display=True )
     plot_drawer.export_to_png(idx = 0, export_path=output_dir)
@@ -221,14 +226,74 @@ def train_dae(args, output_dir):
 
 
 
+################################################################################
+################################################################################
+# main #########################################################################
+
 if __name__ == "__main__":
 
     args = parse()
 
-    vars(args)["log"] = set_logging(logging_level=(logging.DEBUG if args.debug else logging.INFO))
+    vars(args)["log"] = set_logging(
+        logging_level=(logging.DEBUG if args.debug else logging.INFO))
 
-    args.log.info("Training has started.")
+    try: # parse used category
+        used_category = ast.literal_eval(args.used_category)
+    except:
+        raise Exception("Error while parsing list of used category.")
 
-    output_dir = "../out/autoencoder_training_" + get_day_month_year_hour_minute_second()
+    # open config file
+    with open(args.config, 'r') as stream:
+        try:
+            info = yaml.safe_load(stream)
+        except yaml.YAMLError as e:
+            raise e
+
+
+    ############################################################################
+    # load/process embeddings ##################################################
+
+    args.log.info("loading embeddings ...")
+    try:
+        with open(args.embedding_path) as f:
+            embeddings = json.load(f)
+    except:
+        raise Exception("Error while reading embedding json file.")
+
+    # dict to numpy matrix
+
+    vectorized_observation = np.array()
+    for observation in embeddings:
+
+        vo = np.array()
+        missing = False
+        for used_category in used_category:
+
+            if used_category in observation:
+                vo.append( np.array( observation[used_category] ) )
+
+            else: # category is missing, ignoring observation ...
+                missing = True
+                break
+
+        if not missing:
+            vectorized_observation = np.stack( vectorized_observation, vo )
+
+    args.log.info("... done.")
+
+
+    ############################################################################
+    # train ####################################################################
+
+
+    # define 
+
+    #args.log.info("Training has started.")
+
+    #output_dir = "../out/autoencoder_training_" + get_day_month_year_hour_minute_second()
+
+
+    ############################################################################
+    # log ######################################################################
     
-    train_autoencoder(args, output_dir)
+    #train_dae(args, output_dir)

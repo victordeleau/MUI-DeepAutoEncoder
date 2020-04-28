@@ -1,5 +1,7 @@
 # autoencoder base class
 
+import math
+
 from torch import nn
 import torch
 import numpy as np
@@ -28,7 +30,7 @@ class Autoencoder(nn.Module):
                 the activation function to use
         """
 
-        super(BaseDAE, self).__init__()
+        #super(BaseDAE, self).__init__()
 
         self.io_size = io_size
         self.z_size = z_size
@@ -37,16 +39,16 @@ class Autoencoder(nn.Module):
         self.steep_layer_size = steep_layer_size
         self.activation = activation
 
-        self.mode = 0 # default to train mode (1 for validation mode, 2 for test mode)
+        # default to train mode 0 (1 for validation mode, 2 for test mode)
+        self.mode = 0 
 
-        # set the steepiness of the layers if necessary
-
-        if not self.steep_layer_size:
+        if not self.steep_layer_size: # set layers steepiness
             delta = self.io_size - self.z_size
             input_layer_increment = math.floor( delta / self.nb_input_layer )
             output_layer_increment = math.floor( delta / self.nb_output_layer )
 
-        # set the encoder ##############################################################
+        ########################################################################
+        # define encoder #######################################################
 
         input_layer = []
         for i in range(nb_input_layer-1):
@@ -54,24 +56,30 @@ class Autoencoder(nn.Module):
             if self.steep_layer_size:
                 input_layer.append( nn.Linear(io_size, io_size) )
                 input_layer.append( activation(True) )
+
             else:
                 next_layer_input_size = io_size-(i*input_layer_increment)
-                next_layer_output_size = io_size-((i+1)*input_layer_increment))
-                input_layer.append( nn.Linear(next_layer_input_size, next_layer_output_size )
+                next_layer_output_size = io_size-((i+1)*input_layer_increment)
+
+                input_layer.append(
+                    nn.Linear(
+                        next_layer_input_size,
+                        next_layer_output_size ) )
+
                 input_layer.append( activation(True) )
 
         input_layer.append( nn.Linear(z_size+input_layer_increment, z_size) )
         input_layer.append( activation(True) )
 
-        # join encoder layers
-        self.input_layer = nn.Sequential( *input_layer )
+        self.input_layer = nn.Sequential( *input_layer ) # join encoder layers
 
-        # initialize encoder layer weights and biases
+        # initialize layer's weights and biases
         self.input_layer.apply(self.init_weight_general_rule)
         self.input_layer.apply(self.init_bias_zero)
 
 
-        # set the decoder ##############################################################
+        ########################################################################
+        # define decoder #######################################################
 
         output_layer = []
         output_layer.append( nn.Linear(z_size, io_size) )
@@ -82,16 +90,21 @@ class Autoencoder(nn.Module):
             if self.steep_layer_size:
                 output_layer.append( nn.Linear(io_size, io_size) )
                 output_layer.append( activation(True) )
+
             else:
                 next_layer_input_size = io_size-((nb_output_layer-i)*output_layer_increment)
                 next_layer_output_size = io_size-((nb_output_layer-i+1)*output_layer_increment)
-                output_layer.append( nn.Linear(next_layer_input_size, next_layer_output_size) )
+
+                output_layer.append(
+                    nn.Linear(
+                        next_layer_input_size,
+                        next_layer_output_size) )
+
                 output_layer.append( activation(True) )
             
-        # join decoder layers
-        self.output_layer = nn.Sequential( *output_layer )
+        self.output_layer = nn.Sequential( *output_layer ) # join decoder layers
 
-        # initialize decoder layer weights and biases
+        # initialize layer's weights and biases
         self.output_layer.apply(self.init_weight_general_rule)
         self.output_layer.apply(self.init_bias_zero)
 
@@ -159,8 +172,7 @@ class Autoencoder(nn.Module):
 
         if classname.find('Linear') != -1:
             
-            n = m.in_features # get nb of neural input
-            y = 1.0/np.sqrt(n)
+            y = 1.0/np.sqrt( self.input_layer )
             m.weight.data.uniform_(-y, y)
         
         
@@ -178,7 +190,7 @@ class Autoencoder(nn.Module):
             m.bias.data.fill_(0)
 
 
-    def get_mmse_loss(self, input, output):
+    def get_mmse_loss(self, input_data, output_data):
         """
         compute mask mean square error (mmse) and return loss
         use a mask if data is not normalized
@@ -189,8 +201,14 @@ class Autoencoder(nn.Module):
 
         mmse_criterion = nn.MSELoss(reduction='sum')
 
+        # get index of values that aren't set to zero
         mask = input_data != 0.0
-        nb_rating = torch.sum( mask )
-        loss = mmse_criterion( input_data, output_data * mask.float() ) / nb_rating.float()
 
-        return loss
+        # get number of uncorrupted input
+        nb_rating = torch.sum( mask )
+
+        loss = mmse_criterion(
+            input_data,
+            output_data * mask.float() ) 
+
+        return loss / nb_rating.float()

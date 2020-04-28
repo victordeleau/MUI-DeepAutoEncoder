@@ -25,6 +25,8 @@ def parse():
 
     parser.add_argument('--dataset_path', type=str, required=True)
 
+    parser.add_argument('--merge_category', type=bool, required=True, default=True)
+
     return parser.parse_args()
 
 
@@ -42,7 +44,19 @@ if __name__ == "__main__":
 
     if args.dataset_name == "deepfashion2":
 
-        annotation_path = os.path.join( args.dataset_path, "train_coco_annotation.json")
+        info_path = os.path.join(
+            pathlib.Path(__file__).parent.absolute(),
+            "../codae/dataset/deepfashion2.yaml" )
+
+        with open(info_path, 'r') as stream:
+            try:
+                info = yaml.safe_load(stream)
+            except yaml.YAMLError as e:
+                raise e
+
+        annotation_path = os.path.join(
+            args.dataset_path,
+            info["ANNOTATION_FILE"])
 
         if not os.path.exists(annotation_path):
 
@@ -54,22 +68,9 @@ if __name__ == "__main__":
         with open(annotation_path, 'r') as f:
             COCO_annotation = json.load(f)
 
-        info_path = os.path.join(
-            pathlib.Path(__file__).parent.absolute(),
-            "../codae/dataset/deepfashion2.yaml" )
-
-        with open(info_path, 'r') as stream:
-            try:
-                info = yaml.safe_load(stream)
-            except yaml.YAMLError as e:
-                raise e
+        
 
     if args.dataset_name == "modanet":
-        try:
-            with open(args.dataset_path + "TODO", 'r') as f:
-                COCO_annotation = json.load(f)
-        except:
-            raise Exception("Annotatio file for Modanet not found")
 
         info_path = os.path.join(
             pathlib.Path(__file__).parent.absolute(),
@@ -81,12 +82,19 @@ if __name__ == "__main__":
             except yaml.YAMLError as e:
                 raise e
 
-    if args.dataset_name == "imaterialist":
+        annotation_path = os.path.join(
+            args.dataset_path,
+            info["ANNOTATION_FILE"])
+
         try:
-            with open(args.dataset_path + "TODO", 'r') as f:
+            with open(annotation_path, 'r') as f:
                 COCO_annotation = json.load(f)
         except:
-            raise Exception("Annotation file for Imaterialist not found")
+            raise Exception("Annotatio file for Modanet not found")
+
+        
+
+    if args.dataset_name == "imaterialist":
 
         info_path = os.path.join(
             pathlib.Path(__file__).parent.absolute(),
@@ -97,6 +105,18 @@ if __name__ == "__main__":
                 info = yaml.safe_load(stream)
             except yaml.YAMLError as e:
                 raise e
+
+        annotation_path = os.path.join(
+            args.dataset_path,
+            info["ANNOTATION_FILE"])
+
+        try:
+            with open(annotation_path, 'r') as f:
+                COCO_annotation = json.load(f)
+        except:
+            raise Exception("Annotation file for Imaterialist not found")
+
+        
 
     # empty output directory
     choice = input("Erase output directory ? (y/Y/n/N)")
@@ -124,29 +144,51 @@ if __name__ == "__main__":
     for cat in COCO_annotation["categories"]:
         category_index[cat["id"]] = cat["name"]
 
+    # index merged categories by original categories
+    if args.merge_category:
+        merge_index = {}
+        for merge_cat in info["CATEGORY"]:
+            for cat in info["CATEGORY"][merge_cat]:
+                merge_index[cat] = merge_cat
+
 
     # process images ###########################################################
+
+    nb_error = 0
+    nb_export = 0
 
     for image_section in COCO_annotation["images"]: # for all image in json
 
         image_id = image_section["id"] # get image ID
 
-        # make sure output surb dir exists
+        print("Segmenting image ID %d" %image_id)
+
+        image_name = os.path.join(
+            args.dataset_path,
+            info["IMAGE_PATH"],
+            image_section["file_name"])
+
+        try: # open image
+            image = Image.open( image_name )
+        except:
+            nb_error += 1
+            continue
+
+        # if image has no annotations
+        if not image_id in annotation_index:
+            continue
+
+        # make sure output sub dir exists
         output_sub_dir = os.path.join(args.output_path, str(image_id))
         if not os.path.exists(output_sub_dir):
             os.makedirs(output_sub_dir)
 
-        # open image
-        image = Image.open(
-            os.path.join(
-                args.dataset_path,
-                info["IMAGE_PATH"],
-                image_section["file_name"]))
-
-        part_id = 0
+        part_id = 0 # for every annotation of the image
         for ann in annotation_index[image_id]:
 
-            print("Segmenting image ID %d" %image_id, end="\r")
+            category_name = category_index[ann["category_id"]]
+            print("cat id %s" %ann["category_id"])
+            print("cat name %s" %category_index[ann["category_id"]])
 
             image_size = image.size
 
@@ -157,7 +199,8 @@ if __name__ == "__main__":
                 # from (x1, y1, x2, y2, ...) to ((x1, y1), (x2, y2), ...)
                 p = [[p[i*2], p[(i*2)+1]] for i in range(int(len(p)/2))]
 
-                extracted_part = extract_part_from_polygons( image, [p], crop=True )
+                extracted_part = extract_part_from_polygons(
+                    image, [p], crop=True )
 
             except:
                 print("Error while extracting parts from polygons, image ID %d." %image_id)
@@ -167,18 +210,26 @@ if __name__ == "__main__":
                 print("Encountered black image mean %f. Ignoring ..." %m)
                 continue
 
-            part_id_str = str(part_id).zfill(2)
+            # assign category to annotation (original or merged category)
+            if args.merge_category and category_name in merge_index: 
+                new_category_name = merge_index[category_name]\
+                    .replace(" ", "_")
+                print("cat map %s" %merge_index[category_name])
+            else:
+                new_category_name = category_name.replace(" ", "_")
 
-            category_id = ann["category_id"]
-
-            output_file_name = str(image_id) + "_" + part_id_str + "_" + category_index[ann["category_id"]].replace(" ", "_") + ".jpg"
+            output_file_name = str(image_id) + "_" + str(part_id).zfill(2) + "_" + new_category_name + "." + info["IMAGE_EXTENSION"]
 
             try: 
                 # export extracted part to disk in sub folder
                 Image.fromarray(extracted_part).save(
                     os.path.join(output_sub_dir, output_file_name))
                 part_id += 1
+                nb_export += 1
             except:
                 print("Error while exporting image ID %d to disk." %image_id)
-    
+
+
+    print("%d error encountered." %nb_error)
+    print("%d image exported to disk." %nb_export)
     print("... done.")

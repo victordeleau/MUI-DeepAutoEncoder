@@ -293,13 +293,13 @@ if __name__ == "__main__":
     # instantiate dataloader
     dataloader = DataLoader(
         dataset=dataset,
-        batch_size=args.batch_size,
+        batch_size=config["MODEL"]["BATCH_SIZE"],
         shuffle=True,
         collate_fn=my_collate)
 
 
     ############################################################################
-    # train ####################################################################
+    # initialize model #########################################################
 
     args.log.info("Initializing the model.")
 
@@ -308,6 +308,7 @@ if __name__ == "__main__":
     model = DenoisingAutoencoder(
         io_size=io_size,
         z_size=dataset.embedding_size,
+        embedding_size=config["MODEL"]["EMBEDDING_SIZE"],
         nb_input_layer=config["MODEL"]["NB_INPUT_LAYER"],
         nb_output_layer=config["MODEL"]["NB_OUTPUT_LAYER"],
         steep_layer_size=config["MODEL"]["STEEP_LAYER_SIZE"]) 
@@ -328,85 +329,27 @@ if __name__ == "__main__":
         lr=config["MODEL"]["LEARNING_RATE"],
         weight_decay=config["MODEL"]["WEIGHT_DECAY"])
 
+
+    ############################################################################
+    # train ####################################################################
     
-    """
     for epoch in range( config["MODEL"]["EPOCH"] ):
+
+        print("EPOCH = %d" %epoch)
 
         for c, input_data in enumerate(dataloader):
 
-            print("YO")
-
+            print("Batch number = %d" %c, end="\r")
+            
             input_data = input_data.to(device)
 
-            #corrupted_input_data = model.corrupt( input_data )
+            corrupted_input_data, corrupted_indices = model.corrupt(
+                input_data=input_data,
+                nb_corrupted=1)
 
-            output_data = model( input_data )
-    """
+            output_data = model( corrupted_input_data )
 
-    """
-    training_loss, validation_loss = 0, 0
-        increasing_cnt, loss_cnt = 0, 0
-        epoch_time_start = time.time()
-
-        my_base_dae.to(device)
-        my_base_dae.train()
-
-        for i in range(nb_iter): 
-
-            training_batch, remaining = batch_builder.get_batches( training_dataset, args.batch_size, nb_sample_to_process, i )
-            validation_batch, _ = batch_builder.get_batches( validation_dataset, args.batch_size, nb_sample_to_process, i )
-
-            if np.count_nonzero(training_batch) == 0:
-                #print("nop")
-                continue
-
-            #print( np.count_nonzero(training_batch, 1) )
-
-            input_data = Variable(torch.Tensor(np.squeeze(training_batch))).to(device)
-            output_data_to_compare = Variable(torch.Tensor(np.squeeze(validation_batch))).to(device)
-
-            output_data = my_base_dae(input_data)
-
-            training_mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
-            validation_mmse_loss = my_base_dae.get_mmse_loss(output_data_to_compare, output_data)
-
-            if not loss_analyzer.is_nan(training_mmse_loss.item()) and not loss_analyzer.is_nan(validation_mmse_loss.item()):
-                training_loss += training_mmse_loss.item()
-                validation_loss += validation_mmse_loss.item()
-                loss_cnt += 1
-                
-            optimizer.zero_grad()
-
-            training_mmse_loss.backward()
-
-            optimizer.step()
-
-            input_data.detach_()
-
-            args.log.debug("Training loss %0.6f" %( math.sqrt(training_mmse_loss.item()) ) )
-
-        training_rmses.append( math.sqrt(training_loss/ loss_cnt) )
-        validation_rmses.append( math.sqrt(validation_loss/ loss_cnt ) )
-
-        args.log.info('epoch [{:3d}/{:3d}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.2f}s'.format(
-            epoch + 1,
-            args.nb_epoch,
-            training_rmses[-1],
-            validation_rmses[-1],
-            time.time() - epoch_time_start))
-
-        if loss_analyzer.is_minimum(validation_rmses[-1]):
-            args.log.info("Optimum detected with validation rmse %0.6f at epoch %d" %(loss_analyzer.previous_losses[-1], epoch+1-args.max_increasing_cnt))
-            break
-
-
-    """
-
-    # define 
-
-    #args.log.info("Training has started.")
-
-    #output_dir = "../out/autoencoder_training_" + get_day_month_year_hour_minute_second()
+        print()
 
 
     ############################################################################

@@ -1,1 +1,2 @@
 from codae.dataset.deepfashion2_to_coco import df2_to_coco
+from codae.dataset.concatenated_embedding_dataset import ConcatenatedEmbeddingDataset

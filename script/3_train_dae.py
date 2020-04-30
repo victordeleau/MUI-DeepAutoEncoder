@@ -9,8 +9,10 @@ import logging
 import time
 import json
 import argparse
-import ast
 import yaml
+import glob
+import hashlib
+import pickle
 
 from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
@@ -23,8 +25,9 @@ from codae.tool import get_object_size, get_rmse, LossAnalyzer, PlotDrawer, expo
 from codae.tool import parse
 from codae.tool import get_day_month_year_hour_minute_second
 from codae.tool import BatchBuilder
-from codae.dataset import DatasetGetter
-from codae.model import Autoencoder
+from codae.model import DenoisingAutoencoder
+
+from codae.dataset import ConcatenatedEmbeddingDataset
 
 
 def parse():
@@ -38,6 +41,10 @@ def parse():
 
     parser.add_argument('--config', type=str, required=True)
 
+    parser.add_argument('--debug', type=bool, default=True)
+
+    parser.add_argument('--batch_size', type=int, default=1)
+
     return parser.parse_args()
 
 
@@ -47,25 +54,7 @@ def train_dae(args, output_dir):
 
     # normalize the dataset
 
-    # load model
-    model = Autoencoder(
-        io_size=io_size,
-        z_size=args.z_size,
-        nb_input_layer=args.nb_layer,
-        nb_output_layer=args.nb_layer,
-        steep_layer_size=True) 
-
-    use_gpu = torch.cuda.is_available()
-    if use_gpu:
-        args.log.info("Cuda available, loading GPU device")
-    else:
-        args.log.info("No Cuda device available, using CPU") 
-    device = torch.device("cuda:0" if use_gpu else "cpu")
-
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=args.learning_rate,
-        weight_decay=args.regularization)
+    
 
 
     ############################################################################
@@ -220,15 +209,20 @@ def train_dae(args, output_dir):
     ############################################################################
     # plotting and saving ######################################################
 
-    plot_drawer.add( data=[ training_rmses, validation_rmses ], title="RMSE", legend=["training rmse", "validation_rmse"], display=True )
-    plot_drawer.export_to_png(idx = 0, export_path=output_dir)
-    export_parameters_to_json(args, output_dir)
+    
+
 
 
 
 ################################################################################
 ################################################################################
 # main #########################################################################
+
+
+def my_collate(batch):
+
+    return torch.stack(batch)
+
 
 if __name__ == "__main__":
 
@@ -237,15 +231,10 @@ if __name__ == "__main__":
     vars(args)["log"] = set_logging(
         logging_level=(logging.DEBUG if args.debug else logging.INFO))
 
-    try: # parse used category
-        used_category = ast.literal_eval(args.used_category)
-    except:
-        raise Exception("Error while parsing list of used category.")
-
     # open config file
     with open(args.config, 'r') as stream:
         try:
-            info = yaml.safe_load(stream)
+            config = yaml.safe_load(stream)
         except yaml.YAMLError as e:
             raise e
 
@@ -253,38 +242,165 @@ if __name__ == "__main__":
     ############################################################################
     # load/process embeddings ##################################################
 
-    args.log.info("loading embeddings ...")
-    try:
-        with open(args.embedding_path) as f:
-            embeddings = json.load(f)
-    except:
-        raise Exception("Error while reading embedding json file.")
+    args.log.info("Loading dataset.")
 
-    # dict to numpy matrix
+    using_cache = False
+    dataset_cache = glob.glob('tmp/*_dataset.bin')
 
-    vectorized_observation = np.array()
-    for observation in embeddings:
+    if len(dataset_cache) > 0: # check for cached dataset
 
-        vo = np.array()
-        missing = False
-        for used_category in used_category:
+        dataset_cache_path = dataset_cache[0]
+        dataset_hash = dataset_cache_path.split("/")[-1].split("_")[0]
 
-            if used_category in observation:
-                vo.append( np.array( observation[used_category] ) )
+        # load cached dataset if corresponding embedding file hasn't changed
+        if dataset_hash == hashlib.sha1( str( os.stat(
+            args.embedding_path)[9]).encode('utf-8') ).hexdigest():
 
-            else: # category is missing, ignoring observation ...
-                missing = True
-                break
+            args.log.info("Using cached dataset.")
+            using_cache = True
 
-        if not missing:
-            vectorized_observation = np.stack( vectorized_observation, vo )
+            try:
+                with open(dataset_cache_path, 'rb') as f:
+                    dataset = pickle.load(f)
+            except:
+                raise Exception("Error while reading embedding json file.")
 
-    args.log.info("... done.")
+        else: # delete old cached dataset
+            os.remove(dataset_cache_path)
+
+    if not using_cache: # then load from json of embeddings
+        
+        try:
+            with open(args.embedding_path, 'r') as f:
+                embeddings = json.load(f)
+        except:
+            raise Exception("Error while reading embedding json file.")
+
+        dataset = ConcatenatedEmbeddingDataset(
+            embeddings=embeddings,
+            used_category=config["USED_CATEGORY"])
+
+        # write new cache to disk
+        if not os.path.exists("tmp/"):
+            os.makedirs("tmp/")
+        with open("tmp/new_dataset_tmp.bin", "wb") as f:
+            pickle.dump( dataset, f )
+        dataset_cache_name = "tmp/" + hashlib.sha1( str(\
+            os.stat(args.embedding_path)[9])\
+            .encode('utf-8') ).hexdigest() + "_dataset.bin"
+        os.rename("tmp/new_dataset_tmp.bin", dataset_cache_name)
+
+    # instantiate dataloader
+    dataloader = DataLoader(
+        dataset=dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        collate_fn=my_collate)
 
 
     ############################################################################
     # train ####################################################################
 
+    args.log.info("Initializing the model.")
+
+    io_size = config["MODEL"]["EMBEDDING_SIZE"]*len(config["USED_CATEGORY"])
+
+    model = DenoisingAutoencoder(
+        io_size=io_size,
+        z_size=dataset.embedding_size,
+        nb_input_layer=config["MODEL"]["NB_INPUT_LAYER"],
+        nb_output_layer=config["MODEL"]["NB_OUTPUT_LAYER"],
+        steep_layer_size=config["MODEL"]["STEEP_LAYER_SIZE"]) 
+
+    print(model)
+
+    use_gpu = torch.cuda.is_available()
+    if use_gpu:
+        args.log.info("Cuda available, loading GPU device")
+    else:
+        args.log.info("No Cuda device available, using CPU") 
+
+    device = torch.device("cuda:0" if use_gpu else "cpu")
+    model.to(device)
+
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=config["MODEL"]["LEARNING_RATE"],
+        weight_decay=config["MODEL"]["WEIGHT_DECAY"])
+
+    
+    """
+    for epoch in range( config["MODEL"]["EPOCH"] ):
+
+        for c, input_data in enumerate(dataloader):
+
+            print("YO")
+
+            input_data = input_data.to(device)
+
+            #corrupted_input_data = model.corrupt( input_data )
+
+            output_data = model( input_data )
+    """
+
+    """
+    training_loss, validation_loss = 0, 0
+        increasing_cnt, loss_cnt = 0, 0
+        epoch_time_start = time.time()
+
+        my_base_dae.to(device)
+        my_base_dae.train()
+
+        for i in range(nb_iter): 
+
+            training_batch, remaining = batch_builder.get_batches( training_dataset, args.batch_size, nb_sample_to_process, i )
+            validation_batch, _ = batch_builder.get_batches( validation_dataset, args.batch_size, nb_sample_to_process, i )
+
+            if np.count_nonzero(training_batch) == 0:
+                #print("nop")
+                continue
+
+            #print( np.count_nonzero(training_batch, 1) )
+
+            input_data = Variable(torch.Tensor(np.squeeze(training_batch))).to(device)
+            output_data_to_compare = Variable(torch.Tensor(np.squeeze(validation_batch))).to(device)
+
+            output_data = my_base_dae(input_data)
+
+            training_mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
+            validation_mmse_loss = my_base_dae.get_mmse_loss(output_data_to_compare, output_data)
+
+            if not loss_analyzer.is_nan(training_mmse_loss.item()) and not loss_analyzer.is_nan(validation_mmse_loss.item()):
+                training_loss += training_mmse_loss.item()
+                validation_loss += validation_mmse_loss.item()
+                loss_cnt += 1
+                
+            optimizer.zero_grad()
+
+            training_mmse_loss.backward()
+
+            optimizer.step()
+
+            input_data.detach_()
+
+            args.log.debug("Training loss %0.6f" %( math.sqrt(training_mmse_loss.item()) ) )
+
+        training_rmses.append( math.sqrt(training_loss/ loss_cnt) )
+        validation_rmses.append( math.sqrt(validation_loss/ loss_cnt ) )
+
+        args.log.info('epoch [{:3d}/{:3d}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.2f}s'.format(
+            epoch + 1,
+            args.nb_epoch,
+            training_rmses[-1],
+            validation_rmses[-1],
+            time.time() - epoch_time_start))
+
+        if loss_analyzer.is_minimum(validation_rmses[-1]):
+            args.log.info("Optimum detected with validation rmse %0.6f at epoch %d" %(loss_analyzer.previous_losses[-1], epoch+1-args.max_increasing_cnt))
+            break
+
+
+    """
 
     # define 
 
@@ -294,6 +410,10 @@ if __name__ == "__main__":
 
 
     ############################################################################
-    # log ######################################################################
+    # log/plot #################################################################
     
-    #train_dae(args, output_dir)
+    """
+    plot_drawer.add( data=[ training_rmses, validation_rmses ], title="RMSE", legend=["training rmse", "validation_rmse"], display=True )
+    plot_drawer.export_to_png(idx = 0, export_path=output_dir)
+    export_parameters_to_json(args, output_dir)
+    """

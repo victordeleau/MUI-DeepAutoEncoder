@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     # list all image in directory
     image_path_list = glob.glob(
-        os.path.join(args.image_path, "*/*.jpg"),
+        os.path.join(args.image_path, "*/*.*"),
         recursive=args.sub_dir_scan)
 
     nb_error = 0

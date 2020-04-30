@@ -9,3 +9,5 @@ data/
 .vscode
 out/
 muidae/out/
+tmp/
+tmp/*

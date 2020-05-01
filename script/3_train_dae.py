@@ -205,8 +205,8 @@ if __name__ == "__main__":
         args.log.info("EPOCH = %d =====================================================" %epoch)
 
         full_training_loss, partial_training_loss = 0, 0
-        full_validation_loss, partial_validation_loss = 0, 0
 
+        # go over training data ################################################
         for c, input_data in enumerate(train_loader):
 
             print("BATCH NUMBER = %d/%d" %(c, nb_train_batch), end="\r")
@@ -220,7 +220,7 @@ if __name__ == "__main__":
                 corruption_type="zero_continuous",
                 nb_corrupted=config["MODEL"]["NB_CORRUPTED"])
 
-            # apply forward pass to data
+            # apply forward pass to corrupted input data
             output_data = model( c_input_data )
 
             # compute the global training loss
@@ -240,9 +240,42 @@ if __name__ == "__main__":
 
         full_training_loss /= nb_train_batch
         partial_training_loss /= nb_train_batch
-
         args.log.info("FULL RMSE = %f" %full_training_loss)
         args.log.info("PARTIAL RMSE = %f\n" %partial_training_loss)
+
+        full_validation_loss, partial_validation_loss = 0, 0
+
+        # go over validation data ##############################################
+        for c, input_data in enumerate(validation_loader):
+
+            input_data = input_data.to(device)
+
+            # corrupt input data using zero_continuous noise
+            c_input_data, c_mask, c_indices = model.corrupt(
+                input_data=input_data,
+                device=torch_device,
+                corruption_type="zero_continuous",
+                nb_corrupted=config["MODEL"]["NB_CORRUPTED"])
+
+            # apply forward pass to corrupted input data
+            output_data = model( c_input_data )
+
+            # compute the global validation loss
+            ftl = torch.sqrt(criterion(input_data, output_data))
+            full_validation_loss += ftl
+            
+            # compute validation loss of missing embedding
+            input_data[c_mask], output_data[c_mask] = 0., 0.
+            partial_validation_loss += torch.sqrt(criterion(
+                input_data,
+                output_data))
+
+        full_validation_loss /= nb_validation_batch
+        partial_validation_loss /= nb_validation_batch
+        args.log.info("VALIDATION FULL RMSE = %f" %full_validation_loss)
+        args.log.info("VALIDATION PARTIAL RMSE = %f\n" %partial_validation_loss)
+
+    args.log.info("DONE.")
 
 
     ############################################################################

@@ -16,9 +16,9 @@ import pickle
 
 from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
-import torch.nn as nn
-import torch
+from torch.utils.data.sampler import SubsetRandomSampler
 import numpy as np
+import torch
 
 from codae.tool import set_logging, display_info
 from codae.tool import get_object_size, get_rmse, LossAnalyzer, PlotDrawer, export_parameters_to_json
@@ -125,12 +125,37 @@ if __name__ == "__main__":
             .encode('utf-8') ).hexdigest() + "_dataset.bin"
         os.rename("tmp/new_dataset_tmp.bin", dataset_cache_name)
 
-    # instantiate dataloader
-    dataloader = DataLoader(
+
+    ############################################################################
+    # split dataset ############################################################
+
+    indices = list(range(dataset.nb_observation))
+
+    nb_train_observation = math.floor(
+        dataset.nb_observation * config["DATASET"]["SPLIT"][0])
+    nb_validation_observation = dataset.nb_observation - nb_train_observation
+
+    if config["DATASET"]["SHUFFLE"]:
+        np.random.seed(config["SEED"])
+        np.random.shuffle(indices)
+
+    train_indices = indices[nb_train_observation:]
+    validation_indices = indices[:nb_validation_observation]
+
+    train_sampler = SubsetRandomSampler(train_indices)
+    validation_sampler = SubsetRandomSampler(validation_indices)
+
+    train_loader = DataLoader(
         dataset=dataset,
         batch_size=config["MODEL"]["BATCH_SIZE"],
-        shuffle=True,
-        collate_fn=my_collate)
+        collate_fn=my_collate,
+        sampler=train_sampler)
+
+    validation_loader = DataLoader(
+        dataset=dataset,
+        batch_size=config["MODEL"]["BATCH_SIZE"],
+        collate_fn=my_collate,
+        sampler=validation_sampler)
 
 
     ############################################################################
@@ -138,12 +163,12 @@ if __name__ == "__main__":
 
     args.log.info("Initializing the model.")
 
-    io_size = config["MODEL"]["EMBEDDING_SIZE"]*len(config["USED_CATEGORY"])
+    io_size = config["DATASET"]["EMBEDDING_SIZE"]*len(config["DATASET"]["USED_CATEGORY"])
 
     model = DenoisingAutoencoder(
         io_size=io_size,
         z_size=config["MODEL"]["Z_SIZE"],
-        embedding_size=config["MODEL"]["EMBEDDING_SIZE"],
+        embedding_size=config["DATASET"]["EMBEDDING_SIZE"],
         nb_input_layer=config["MODEL"]["NB_INPUT_LAYER"],
         nb_output_layer=config["MODEL"]["NB_OUTPUT_LAYER"],
         steep_layer_size=config["MODEL"]["STEEP_LAYER_SIZE"]) 
@@ -172,7 +197,8 @@ if __name__ == "__main__":
     ############################################################################
     # train ####################################################################
 
-    nb_batch = dataset.nb_observation / config["MODEL"]["BATCH_SIZE"]
+    nb_train_batch = len(train_indices) / config["MODEL"]["BATCH_SIZE"]
+    nb_validation_batch = len(validation_indices) / config["MODEL"]["BATCH_SIZE"]
     
     for epoch in range( config["MODEL"]["EPOCH"] ):
 
@@ -181,9 +207,9 @@ if __name__ == "__main__":
         full_training_loss, partial_training_loss = 0, 0
         full_validation_loss, partial_validation_loss = 0, 0
 
-        for c, input_data in enumerate(dataloader):
+        for c, input_data in enumerate(train_loader):
 
-            print("BATCH NUMBER = %d/%d" %(c, nb_batch), end="\r")
+            print("BATCH NUMBER = %d/%d" %(c, nb_train_batch), end="\r")
             
             input_data = input_data.to(device)
 
@@ -212,8 +238,8 @@ if __name__ == "__main__":
                 input_data,
                 output_data))
 
-        full_training_loss /= nb_batch
-        partial_training_loss /= nb_batch
+        full_training_loss /= nb_train_batch
+        partial_training_loss /= nb_train_batch
 
         args.log.info("FULL RMSE = %f" %full_training_loss)
         args.log.info("PARTIAL RMSE = %f\n" %partial_training_loss)

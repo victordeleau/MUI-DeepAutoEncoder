@@ -302,10 +302,7 @@ class DenoisingAutoencoder(torch.nn.Module):
 
             # for nb_corrupted embedding requested
             for j in c_indices[-1]: 
-
                 c_input[i][j*self.embedding_size:(j+1)*self.embedding_size]=0.0
-
-                #c_mask[i] = c_input[i].type(torch.bool).neg()
 
         c_mask = ( c_input == 0 )
 

@@ -242,7 +242,7 @@ class DenoisingAutoencoder(torch.nn.Module):
         return self
 
 
-    def corrupt(self, input_data, nb_corrupted=1, corruption_type="zero_continuous"):
+    def corrupt(self, input_data, device, nb_corrupted=1, corruption_type="zero_continuous"):
         """
         corrupt input_data using requested corruption type
         input
@@ -260,12 +260,15 @@ class DenoisingAutoencoder(torch.nn.Module):
         """
 
         if corruption_type == "zero_continuous":
-            return self._corrupt_zero_continuous(input_data, nb_corrupted=1)
+            return self._corrupt_zero_continuous(
+                input_data=input_data,
+                device=device,
+                nb_corrupted=1)
         else:
             raise Exception("Error: invalid corruption type requested (zero_continuous).")
 
 
-    def _corrupt_zero_continuous(self, input_data, nb_corrupted=1):
+    def _corrupt_zero_continuous(self, input_data, device, nb_corrupted=1):
         """
         randomly set one of the input embeddings and set all values to zero.
         input
@@ -274,29 +277,36 @@ class DenoisingAutoencoder(torch.nn.Module):
             nb_corrupted : 0 < int < self.nb_category-1
                 number of embeddings to corrupt
         output
-            corrupted_input : torch.Tensor
+            c_input : torch.Tensor
                 the corrupted input data
-            corrupted_indices : list(int)
+            c_indices : list(int)
                 indices of corrupted categories
         """
 
         if nb_corrupted >= self.nb_category:
             raise Exception("Error: too many corrupted embeddings requested (0 < nb_corrupted < self.nb_category-1).")
 
-        corrupted_indices = []
-        corrupted_input = input_data
+        c_indices = []
+        c_input = input_data
+        c_mask = torch.empty(
+            input_data.size(),
+            device=device)
 
         # for batch size 
         for i in range( input_data.size()[0] ): 
 
-            corrupted_indices.append(
+            c_indices.append(
                 random.sample(
                     range(int(self.nb_category)),
                     nb_corrupted))
 
             # for nb_corrupted embedding requested
-            for j in corrupted_indices[-1]: 
+            for j in c_indices[-1]: 
 
-                corrupted_input[i][j*self.embedding_size:(j+1)*self.embedding_size] = 0.0
+                c_input[i][j*self.embedding_size:(j+1)*self.embedding_size]=0.0
 
-        return corrupted_input, corrupted_indices
+                #c_mask[i] = c_input[i].type(torch.bool).neg()
+
+        c_mask = ( c_input == 0 )
+
+        return c_input, c_mask, c_indices

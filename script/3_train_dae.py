@@ -43,171 +43,7 @@ def parse():
 
     parser.add_argument('--debug', type=bool, default=True)
 
-    parser.add_argument('--batch_size', type=int, default=1)
-
     return parser.parse_args()
-
-
-def train_dae(args, output_dir):
-
-    # load dataset of embeddings
-
-    # normalize the dataset
-
-    
-
-
-    ############################################################################
-
-    dataset_getter = DatasetGetter()
-
-    if not dataset_getter.local_dataset_found() or args.reload_dataset:
-        args.log.info( "Downloading dataset " + args.dataset )
-        dataset_getter.download_dataset(dataset_name=args.dataset)
-
-    dataset = dataset_getter.load_local_dataset(view=args.view, try_load_binary=not args.reload_dataset)
-
-    training_dataset, tmp_dataset = dataset.split(0.6)
-    validation_dataset, testing_dataset = tmp_dataset.split(0.5)
-
-    if args.normalize:
-        training_dataset.mean_normalize()
-        validation_dataset.mean_normalize()
-        testing_dataset.mean_normalize()
-    
-    nb_example = (dataset.nb_item if dataset.get_view() == "item" else dataset.nb_user)
-
-    my_base_dae = BaseDAE(
-        io_size=dataset.get_io_size(),
-        z_size=args.zsize,
-        nb_input_layer=args.nb_layer,
-        nb_output_layer=args.nb_layer)
-
-    display_info(args, dataset)
-
-    use_gpu = torch.cuda.is_available()
-    if use_gpu:
-        args.log.info("Cuda available, loading GPU device")
-    else:
-        args.log.info("No Cuda device available, using CPU") 
-    device = torch.device("cuda:0" if use_gpu else "cpu")
-
-    optimizer = torch.optim.Adam( my_base_dae.parameters(), lr=args.learning_rate, weight_decay=args.regularization )
-    
-    nb_sample_to_process = math.floor(args.redux * nb_example)
-
-    nb_iter = math.ceil(nb_sample_to_process / args.batch_size)
-
-    loss_analyzer = LossAnalyzer(args.max_increasing_cnt, args.max_nan_cnt)
-
-    plot_drawer = PlotDrawer()
-
-    batch_builder = BatchBuilder(dataset.get_io_size(), [0.8, 0.1, 0.1], 128)
-
-
-    ############################################################################
-    # training #################################################################
-
-    training_time_start = time.time()
-    training_rmses, validation_rmses = [], []
-
-    for epoch in range(args.nb_epoch):
-
-        training_loss, validation_loss = 0, 0
-        increasing_cnt, loss_cnt = 0, 0
-        epoch_time_start = time.time()
-
-        my_base_dae.to(device)
-        my_base_dae.train()
-
-        for i in range(nb_iter): 
-
-            training_batch, remaining = batch_builder.get_batches( training_dataset, args.batch_size, nb_sample_to_process, i )
-            validation_batch, _ = batch_builder.get_batches( validation_dataset, args.batch_size, nb_sample_to_process, i )
-
-            if np.count_nonzero(training_batch) == 0:
-                #print("nop")
-                continue
-
-            #print( np.count_nonzero(training_batch, 1) )
-
-            input_data = Variable(torch.Tensor(np.squeeze(training_batch))).to(device)
-            output_data_to_compare = Variable(torch.Tensor(np.squeeze(validation_batch))).to(device)
-
-            output_data = my_base_dae(input_data)
-
-            training_mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
-            validation_mmse_loss = my_base_dae.get_mmse_loss(output_data_to_compare, output_data)
-
-            if not loss_analyzer.is_nan(training_mmse_loss.item()) and not loss_analyzer.is_nan(validation_mmse_loss.item()):
-                training_loss += training_mmse_loss.item()
-                validation_loss += validation_mmse_loss.item()
-                loss_cnt += 1
-                
-            optimizer.zero_grad()
-
-            training_mmse_loss.backward()
-
-            optimizer.step()
-
-            input_data.detach_()
-
-            args.log.debug("Training loss %0.6f" %( math.sqrt(training_mmse_loss.item()) ) )
-
-        training_rmses.append( math.sqrt(training_loss/ loss_cnt) )
-        validation_rmses.append( math.sqrt(validation_loss/ loss_cnt ) )
-
-        args.log.info('epoch [{:3d}/{:3d}], training rmse:{:.6f}, validation rmse:{:.6f}, time:{:0.2f}s'.format(
-            epoch + 1,
-            args.nb_epoch,
-            training_rmses[-1],
-            validation_rmses[-1],
-            time.time() - epoch_time_start))
-
-        if loss_analyzer.is_minimum(validation_rmses[-1]):
-            args.log.info("Optimum detected with validation rmse %0.6f at epoch %d" %(loss_analyzer.previous_losses[-1], epoch+1-args.max_increasing_cnt))
-            break
-
-
-    ############################################################################
-    # testing ##################################################################
-
-    training_loss, testing_loss, loss_cnt = 0, 0, 0
-    testing_time_start = time.time()
-
-    my_base_dae.to(device)
-    my_base_dae.eval()
-
-    for i in range(nb_iter):
-
-        training_batch, remaining = batch_builder.get_batches( training_dataset, args.batch_size, nb_sample_to_process, i )
-        testing_batch, _ = batch_builder.get_batches( testing_dataset, args.batch_size, nb_sample_to_process, i )
-
-        input_data = Variable(torch.Tensor(np.squeeze(training_batch))).to(device)
-        output_data_to_compare = Variable(torch.Tensor(np.squeeze(testing_batch))).to(device)
-
-        output_data = my_base_dae(input_data)
-
-        training_mmse_loss = my_base_dae.get_mmse_loss(input_data, output_data)
-        testing_mmse_loss = my_base_dae.get_mmse_loss(output_data_to_compare, output_data)
-
-        if not loss_analyzer.is_nan(training_mmse_loss.item()) and not loss_analyzer.is_nan(testing_mmse_loss.item()):
-                training_loss += training_mmse_loss.item()
-                testing_loss += testing_mmse_loss.item()
-                loss_cnt += 1
-
-        input_data.detach_()
-
-    logging.info("training rmse:{:.6f}, testing rmse:{:.6f}, testing time of {:0.2f}s".format(
-        math.sqrt(training_loss/loss_cnt),
-        math.sqrt(testing_loss/loss_cnt),
-        (time.time() - testing_time_start)))
-
-    args.log.info("Testing has ended.\n")
-
-
-    ############################################################################
-    # plotting and saving ######################################################
 
 
 ################################################################################
@@ -319,6 +155,7 @@ if __name__ == "__main__":
         args.log.info("No CUDA device available, using CPU\n") 
 
     device = torch.device("cuda:0" if use_gpu else "cpu")
+    torch_device = torch.device(device)
     model.to(device)
 
     optimizer = torch.optim.Adam(
@@ -341,7 +178,8 @@ if __name__ == "__main__":
 
         args.log.info("EPOCH = %d =====================================================" %epoch)
 
-        epoch_loss = 0
+        full_training_loss, partial_training_loss = 0, 0
+        full_validation_loss, partial_validation_loss = 0, 0
 
         for c, input_data in enumerate(dataloader):
 
@@ -350,24 +188,35 @@ if __name__ == "__main__":
             input_data = input_data.to(device)
 
             # corrupt input data using zero_continuous noise
-            corrupted_input_data, corrupted_indices = model.corrupt(
+            c_input_data, c_mask, c_indices = model.corrupt(
                 input_data=input_data,
+                device=torch_device,
                 corruption_type="zero_continuous",
-                nb_corrupted=1)
+                nb_corrupted=config["MODEL"]["NB_CORRUPTED"])
 
             # apply forward pass to data
-            output_data = model( corrupted_input_data )
+            output_data = model( c_input_data )
 
-            # compute the loss
-            loss = torch.sqrt( criterion(corrupted_input_data, output_data) )
-            epoch_loss += loss
+            # compute the global training loss
+            ftl = torch.sqrt(criterion(input_data, output_data))
+            full_training_loss += ftl
 
-            # backpropagate error gradient
+            # backpropagate global training loss
             optimizer.zero_grad()
-            loss.backward()
+            ftl.backward()
             optimizer.step()
+            
+            # compute training loss of missing embedding
+            input_data[c_mask], output_data[c_mask] = 0., 0.
+            partial_training_loss += torch.sqrt(criterion(
+                input_data,
+                output_data))
 
-        args.log.info("RMSE = %f\n" %(epoch_loss/dataset.nb_observation))
+        full_training_loss /= nb_batch
+        partial_training_loss /= nb_batch
+
+        args.log.info("FULL RMSE = %f" %full_training_loss)
+        args.log.info("PARTIAL RMSE = %f\n" %partial_training_loss)
 
 
     ############################################################################

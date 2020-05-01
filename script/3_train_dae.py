@@ -209,10 +209,6 @@ def train_dae(args, output_dir):
     ############################################################################
     # plotting and saving ######################################################
 
-    
-
-
-
 
 ################################################################################
 ################################################################################
@@ -226,10 +222,13 @@ def my_collate(batch):
 
 if __name__ == "__main__":
 
+    print()
+
     args = parse()
 
     vars(args)["log"] = set_logging(
-        logging_level=(logging.DEBUG if args.debug else logging.INFO))
+        logging_level=(logging.DEBUG if args.debug else logging.INFO),
+        log_file_path="log/")
 
     # open config file
     with open(args.config, 'r') as stream:
@@ -307,19 +306,17 @@ if __name__ == "__main__":
 
     model = DenoisingAutoencoder(
         io_size=io_size,
-        z_size=dataset.embedding_size,
+        z_size=config["MODEL"]["Z_SIZE"],
         embedding_size=config["MODEL"]["EMBEDDING_SIZE"],
         nb_input_layer=config["MODEL"]["NB_INPUT_LAYER"],
         nb_output_layer=config["MODEL"]["NB_OUTPUT_LAYER"],
         steep_layer_size=config["MODEL"]["STEEP_LAYER_SIZE"]) 
 
-    print(model)
-
     use_gpu = torch.cuda.is_available()
     if use_gpu:
-        args.log.info("Cuda available, loading GPU device")
+        args.log.info("CUDA available, loading GPU device\n")
     else:
-        args.log.info("No Cuda device available, using CPU") 
+        args.log.info("No CUDA device available, using CPU\n") 
 
     device = torch.device("cuda:0" if use_gpu else "cpu")
     model.to(device)
@@ -329,27 +326,48 @@ if __name__ == "__main__":
         lr=config["MODEL"]["LEARNING_RATE"],
         weight_decay=config["MODEL"]["WEIGHT_DECAY"])
 
+    criterion = torch.nn.MSELoss()
+
+    # display some information about the model & dataset
+    args.log.info(model)
+    display_info(config)
 
     ############################################################################
     # train ####################################################################
+
+    nb_batch = dataset.nb_observation / config["MODEL"]["BATCH_SIZE"]
     
     for epoch in range( config["MODEL"]["EPOCH"] ):
 
-        print("EPOCH = %d" %epoch)
+        args.log.info("EPOCH = %d =====================================================" %epoch)
+
+        epoch_loss = 0
 
         for c, input_data in enumerate(dataloader):
 
-            print("Batch number = %d" %c, end="\r")
+            print("BATCH NUMBER = %d/%d" %(c, nb_batch), end="\r")
             
             input_data = input_data.to(device)
 
+            # corrupt input data using zero_continuous noise
             corrupted_input_data, corrupted_indices = model.corrupt(
                 input_data=input_data,
+                corruption_type="zero_continuous",
                 nb_corrupted=1)
 
+            # apply forward pass to data
             output_data = model( corrupted_input_data )
 
-        print()
+            # compute the loss
+            loss = torch.sqrt( criterion(corrupted_input_data, output_data) )
+            epoch_loss += loss
+
+            # backpropagate error gradient
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        args.log.info("RMSE = %f\n" %(epoch_loss/dataset.nb_observation))
 
 
     ############################################################################

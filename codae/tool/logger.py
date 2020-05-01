@@ -11,7 +11,7 @@ import torch
 def set_logging(log_file_path="/mnt/ramdisk/", log_file_name=None, logging_level=logging.INFO):
 
     now = datetime.datetime.now()
-    log_file_name = ("MUI-DAE_" + now.strftime("%Y-%m-%d %H:%M") + ".log" if log_file_name == None else log_file_name)
+    log_file_name = ("CODAE_" + now.strftime("%Y-%m-%d %H:%M") + ".log" if log_file_name == None else log_file_name)
 
     root = logging.getLogger()
     root.setLevel(logging_level)
@@ -34,22 +34,17 @@ def set_logging(log_file_path="/mnt/ramdisk/", log_file_name=None, logging_level
     return logging
 
     
-def display_info(args, dataset=None):
+def display_info(config):
 
     print("")
-    logging.info("### LEARNING RATE = %f" %args.learning_rate)
-    logging.info("### WEIGHT DECAY = %f" %args.regularization)
-    logging.info("### EPOCH = %d" %args.nb_epoch)
-    logging.info("### BATCH SIZE = %d" %args.batch_size)
-    logging.info("### LAYERS = %d" %((args.nb_layer*2)+1))
-    logging.info("### Z SIZE = %d" %args.zsize)
-    
-    if dataset != None:
-        logging.info("### IO SIZE = %s" %dataset.get_io_size())
-        logging.info("### DATASET NAME = %s" %args.dataset)
-        logging.info("### NB USER = %s" %dataset.nb_user)
-        logging.info("### NB ITEM = %s" %dataset.nb_item)
-        logging.info("### DATASET NAME = %s" %args.dataset)
-        logging.info("### DATASET SIZE FACTOR = %.4f" %args.redux)
-        logging.info("### DATASET VIEW = %s" %args.view)
-        logging.info("### NORMALIZED = %s\n" %args.normalize)
+    logging.info("### LEARNING RATE = %f" %config["MODEL"]["LEARNING_RATE"])
+    logging.info("### WEIGHT DECAY = %f" %config["MODEL"]["WEIGHT_DECAY"])
+    logging.info("### NB EPOCH = %d" %config["MODEL"]["EPOCH"])
+    logging.info("### BATCH SIZE = %d" %config["MODEL"]["BATCH_SIZE"])
+    logging.info("### NB INPUT_LAYER = %d" %config["MODEL"]["NB_INPUT_LAYER"])
+    logging.info("### NB OUTPUT LAYER = %d" %config["MODEL"]["NB_OUTPUT_LAYER"])
+    logging.info("### STEEP LAYER SIZE = %d" %config["MODEL"]["STEEP_LAYER_SIZE"])
+    logging.info("### EMBEDDING SIZE = %d" %config["MODEL"]["EMBEDDING_SIZE"])
+    logging.info("### Z SIZE = %d" %config["MODEL"]["EMBEDDING_SIZE"])
+    logging.info("### IO SIZE = %d" %(len(config["USED_CATEGORY"])*config["MODEL"]["EMBEDDING_SIZE"]))
+    logging.info("### NB CATEGORY = %d\n" %(len(config["USED_CATEGORY"])))

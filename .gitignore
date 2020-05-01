@@ -11,3 +11,5 @@ out/
 muidae/out/
 tmp/
 tmp/*
+log/
+log/*

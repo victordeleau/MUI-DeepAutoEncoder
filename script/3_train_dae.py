@@ -163,7 +163,8 @@ if __name__ == "__main__":
             # go over training data ############################################
             for c, (input_data, idx) in enumerate(train_loader):
 
-                #print("BATCH NUMBER = %d/%d" %(c, nb_train_batch), end="\r")
+                print("AUGMENTATION RUN %2d/%2d BATCH NUMBER = %5d/%5d" %(
+                    augment_run+1, dataset.nb_used_category, c, nb_train_batch), end="\r")
 
                 corrupt_idx = [ augment_index[i][augment_run] for i in idx ]
                 

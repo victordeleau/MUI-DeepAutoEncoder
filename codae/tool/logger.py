@@ -4,6 +4,7 @@ import logging
 import sys
 import datetime
 import torch
+import datetime
 
 """
     setup logging capabilities
@@ -48,3 +49,12 @@ def display_info(config):
     logging.info("### Z SIZE = %d" %config["MODEL"]["Z_SIZE"])
     logging.info("### IO SIZE = %d" %(len(config["DATASET"]["USED_CATEGORY"])*config["DATASET"]["EMBEDDING_SIZE"]))
     logging.info("### NB CATEGORY = %d\n" %(len(config["DATASET"]["USED_CATEGORY"])))
+
+
+def get_date():
+
+    d = datetime.date.today()
+
+    t = str( datetime.datetime.now().time() ).split('.')[0].replace(':', '')
+
+    return '{:02d}'.format(d.day) + '{:02d}'.format(d.month) + '{:02d}'.format(d.year) + "_" + t

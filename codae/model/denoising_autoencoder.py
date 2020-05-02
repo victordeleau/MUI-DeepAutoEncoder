@@ -185,9 +185,6 @@ class DenoisingAutoencoder(torch.nn.Module):
         """
 
         if m.__class__.__name__.find('Linear') != -1:
-            
-            #y = 1.0/math.sqrt( self.input_layer )
-            #m.weight.data.uniform_(-y, y)
 
             torch.nn.init.xavier_uniform_(m.weight)
         

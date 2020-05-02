@@ -11,8 +11,10 @@ class ConcatenatedEmbeddingDataset(Dataset):
     def __init__(self, embeddings, used_category):
         """
         input
-            embedding: dict
+            embedding : dict
                 dict of embeddings keyed by observation ID
+            used_category : list(str)
+                subset of category to use in the dataset
         """
 
         self.embeddings = embeddings
@@ -38,6 +40,16 @@ class ConcatenatedEmbeddingDataset(Dataset):
         self.embedding_size = len(
             self.filtered_embeddings[ self.index[0] ][ self.used_category[0] ] )
 
+        self.filtered_embeddings_tensor = torch.empty((len(self.index),
+            self.nb_used_category*self.embedding_size))
+
+        for c, i in enumerate(self.index):
+            r = torch.Tensor()
+            for category in self.used_category:
+                r = torch.cat( (r, torch.Tensor(
+                self.filtered_embeddings[i][category] ) ) )
+            self.filtered_embeddings_tensor[c] = r
+
 
     def __len__(self):
 
@@ -46,11 +58,29 @@ class ConcatenatedEmbeddingDataset(Dataset):
 
     def __getitem__(self, idx):
 
-        r = torch.Tensor()
+        return self.filtered_embeddings_tensor[idx]
 
-        for category in self.used_category: 
+    
+    def to(self, device):
+        """
+        send to inner data to device
+        input
+            device : torch.device
+        """
 
-            r = torch.cat( (r, torch.Tensor(
-                self.filtered_embeddings[self.index[idx]][category] ) ) )
+        self.filtered_embeddings_tensor.to(device)
 
-        return r
+    
+    def cosine_similarity(self, query, indices=None):
+        """
+        compute cosine_similarity between query embedding and dataset of embedding.
+        input
+            query : torch.Tensor (len == self.embedding_size)
+                query tensor for which we want to find the most similar other
+            indices : list(int)
+                subset of indices of the dataset (default consider all of them)
+        output
+
+        """
+
+        pass

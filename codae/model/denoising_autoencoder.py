@@ -239,14 +239,14 @@ class DenoisingAutoencoder(torch.nn.Module):
         return self
 
 
-    def corrupt(self, input_data, device, nb_corrupted=1, corruption_type="zero_continuous"):
+    def corrupt(self, input_data, device, indices, corruption_type="zero_continuous"):
         """
         corrupt input_data using requested corruption type
         input
             input_data : torch.Tensor
                 the piece of data to corrupt
-            nb_corrupted : 0 < int < self.nb_category-1
-                number of embeddings to corrupt (for zero_continuous corruption type only)
+            indices : list(list(int))
+                list of embedding index to corrupt
             corruption_type : str
                 type of corruption to apply
         output
@@ -260,19 +260,19 @@ class DenoisingAutoencoder(torch.nn.Module):
             return self._corrupt_zero_continuous(
                 input_data=input_data,
                 device=device,
-                nb_corrupted=1)
+                indices=indices)
         else:
             raise Exception("Error: invalid corruption type requested (zero_continuous).")
 
 
-    def _corrupt_zero_continuous(self, input_data, device, nb_corrupted=1):
+    def _corrupt_zero_continuous(self, input_data, device, indices):
         """
         randomly set one of the input embeddings and set all values to zero.
         input
             input_data : torch.Tensor
                 the piece of data to corrupt
-            nb_corrupted : 0 < int < self.nb_category-1
-                number of embeddings to corrupt
+            indices : list(list(int))
+                list of embedding index to corrupt
         output
             c_input : torch.Tensor
                 the corrupted input data
@@ -280,10 +280,6 @@ class DenoisingAutoencoder(torch.nn.Module):
                 indices of corrupted categories
         """
 
-        if nb_corrupted >= self.nb_category:
-            raise Exception("Error: too many corrupted embeddings requested (0 < nb_corrupted < self.nb_category-1).")
-
-        c_indices = []
         c_input = input_data
         c_mask = torch.empty(
             input_data.size(),
@@ -292,15 +288,9 @@ class DenoisingAutoencoder(torch.nn.Module):
         # for batch size 
         for i in range( input_data.size()[0] ): 
 
-            c_indices.append(
-                random.sample(
-                    range(int(self.nb_category)),
-                    nb_corrupted))
-
-            # for nb_corrupted embedding requested
-            for j in c_indices[-1]: 
-                c_input[i][j*self.embedding_size:(j+1)*self.embedding_size]=0.0
+            # for each corrupted embedding
+            c_input[i][indices[i]*self.embedding_size:(indices[i]+1)*self.embedding_size]=0.0
 
         c_mask = ( c_input == 0 )
 
-        return c_input, c_mask, c_indices
+        return c_input, c_mask

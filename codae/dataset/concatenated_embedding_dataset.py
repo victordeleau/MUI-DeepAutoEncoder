@@ -58,7 +58,7 @@ class ConcatenatedEmbeddingDataset(Dataset):
 
     def __getitem__(self, idx):
 
-        return self.filtered_embeddings_tensor[idx]
+        return self.filtered_embeddings_tensor[idx], idx
 
     
     def to(self, device):
@@ -68,7 +68,7 @@ class ConcatenatedEmbeddingDataset(Dataset):
             device : torch.device
         """
 
-        self.filtered_embeddings_tensor.to(device)
+        self.filtered_embeddings_tensor = self.filtered_embeddings_tensor.to(device)
 
     
     def cosine_similarity(self, query, indices=None):

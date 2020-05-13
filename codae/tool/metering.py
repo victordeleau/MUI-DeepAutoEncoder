@@ -232,3 +232,32 @@ def export_parameters_to_json(args, output_dir):
 
     with open(output_dir + "/training_parameters.json", 'w+') as f:
         f.write(content)
+
+
+def get_ranking_loss(prediction, dataset, corrupt_idx, idx):
+    """
+    Compute item ranking loss
+    input 
+        prediction : torch.Tensor
+            the predicted observation
+        corrupt_idx : list(list)
+            batch size list of list of corrupted indices
+        dataset : torch.data.Dataset
+            the dataset of original embedding
+    output
+        ranking_loss : 0 < float < 1
+            the ranking loss between 0 and 1
+    """
+
+    ranking_loss = 0
+
+    for i in idx: # for each observation
+
+        for j in range(corrupt_idx[i]): # for each corrupted index
+
+            # cosine similarity between prediction and inventory
+
+            # rank of the predicted item
+
+            ranking_loss += 0
+

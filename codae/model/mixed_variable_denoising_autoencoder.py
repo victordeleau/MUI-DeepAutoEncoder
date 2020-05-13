@@ -1,18 +1,16 @@
-# autoencoder base class
+# A mixed variable denoising autoencoder model
 
 import math
-import random
 
 import torch
 import numpy as np
 
-class DenoisingAutoencoder(torch.nn.Module):
+class MixedVariableDenoisingAutoencoder(torch.nn.Module):
     
-    def __init__(self, io_size, z_size, embedding_size, nb_input_layer=2, nb_output_layer=2, steep_layer_size=True, activation=torch.nn.ReLU):
+    def __init__(self, input_arch, z_size, nb_input_layer=2, nb_output_layer=2, steep_layer_size=True, activation=torch.nn.ReLU):
         """input
-            io_size : int
-                size of the input and output layer
-                default : 512
+            input_arch : dict
+                list of dict {"name": name, "type": "regression"/"classification", "size": int, "lambda": 1, "position": int}
             z_size : int
                 size of the embedding layer
                 default : 128
@@ -28,23 +26,17 @@ class DenoisingAutoencoder(torch.nn.Module):
                 the activation function to use
         """
 
-        super(DenoisingAutoencoder, self).__init__()
+        super(MixedVariableDenoisingAutoencoder, self).__init__()
 
-        if io_size % embedding_size != 0:
-            raise Exception("Error: io_size must be a multiple of embedding_size")
+        self.io_size = d["position"] + d["size"]
 
-        self.embedding_size = embedding_size
-        self.nb_category = io_size / embedding_size
-        self.io_size = io_size
+        self.input_arch = input_arch
         self.z_size = z_size
         
         self.nb_input_layer = nb_input_layer
         self.nb_output_layer = nb_output_layer
         self.steep_layer_size = steep_layer_size
         self.activation = activation
-
-        # default to train mode 0 (1 for validation mode, 2 for test mode)
-        self.mode = 0 
 
         input_layer_increment = 0
         output_layer_increment = 0
@@ -81,7 +73,8 @@ class DenoisingAutoencoder(torch.nn.Module):
                 io_size-((self.nb_input_layer-1)*input_layer_increment), z_size) )
         input_layer.append( activation(True) )
 
-        self.input_layer = torch.nn.Sequential( *input_layer ) # join encoder layers
+        # join encoder layers
+        self.input_layer = torch.nn.Sequential( *input_layer ) 
 
         # initialize layer's weights and biases
         self.input_layer.apply(self.init_weight_general_rule)
@@ -116,9 +109,9 @@ class DenoisingAutoencoder(torch.nn.Module):
                 z_size+((nb_output_layer-1)*output_layer_increment),
                 io_size) )
         output_layer.append( activation(True) )
-        #
-            
-        self.output_layer = torch.nn.Sequential( *output_layer ) # join decoder layers
+        
+        # join decoder layers
+        self.output_layer = torch.nn.Sequential( *output_layer ) 
 
         # initialize layer's weights and biases
         self.output_layer.apply(self.init_weight_general_rule)
@@ -203,7 +196,7 @@ class DenoisingAutoencoder(torch.nn.Module):
             m.bias.data.fill_(0)
 
 
-    def get_mmse_loss(self, input_data, output_data):
+    def get_loss(self, input_data, output_data):
         """
         compute mask mean square error (mmse) and return loss
         use a mask if data is not normalized
@@ -212,19 +205,40 @@ class DenoisingAutoencoder(torch.nn.Module):
             output : torch.Tensor
         """
 
-        mmse_criterion = torch.nn.MSELoss(reduction='sum')
+        mse_criterion = torch.nn.MSELoss(reduction='sum')
+        ce_criterion = torch.nn.cross
 
-        # get index of values that aren't set to zero
-        mask = input_data != 0.0
+        mask = torch.Tensor(output_data.size())
 
-        # get number of uncorrupted input
-        nb_rating = torch.sum( mask )
+        # compute mask
+        for variable in self.input_arch:
+            if output_data[variable["position"]:variable["size"]].mean() == 0:
+                mask[variable["position"]:variable["size"]] = True
 
-        loss = mmse_criterion(
-            input_data,
-            output_data * mask.float() ) 
+        loss, nb = 0, 0
+        for variable in self.input_arch:
 
-        return loss / nb_rating.float()
+            if output_data[variable["position"]:variable["size"]].mean() == 0:
+                continue
+
+            if variable["type"] == "regression":
+
+                loss += mse_criterion(
+                    input_data[variable["position"]: variable["position"]+variable["size"]],
+                    output_data[variable["position"]: variable["position"]+variable["size"]])
+                nb += variable["size"]
+
+            elif variable["type"] == "classification":
+
+                loss += ce_criterion(
+                    input_data[variable["position"]: variable["position"]+variable["size"]],
+                    output_data[variable["position"]: variable["position"]+1])
+                nb += 1
+
+            else:
+                raise Exception("Error: invalid loss type requested.")
+
+        return loss / nb
 
 
     def to(self, *args, **kwargs):
@@ -285,12 +299,12 @@ class DenoisingAutoencoder(torch.nn.Module):
             input_data.size(),
             device=device)
 
-        # for batch size 
-        for i in range( input_data.size()[0] ): 
+        for i in range( input_data.size()[0] ): # for batch size 
+            
+            start = indices[i]*self.input_layer[indices[i]]["position"]
+            end = (indices[i]*self.input_layer[indices[i]]["position"]) + self.input_layer[indices[i]]["size"]
 
-            # for each corrupted embedding
-            c_input[i][indices[i]*self.embedding_size:(indices[i]+1)*self.embedding_size]=0.0
-
-        c_mask = ( c_input == 0 )
+            c_input[i][start:end]=0.0
+            c_mask[i][start:end]=True
 
         return c_input, c_mask

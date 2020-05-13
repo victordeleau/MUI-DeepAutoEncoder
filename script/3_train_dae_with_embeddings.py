@@ -13,6 +13,10 @@ import hashlib
 import pickle
 import random
 
+import matplotlib
+matplotlib.use('agg')
+import matplotlib.pyplot as plt
+
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 import numpy as np
@@ -20,10 +24,10 @@ import torch
 import yaml
 
 from codae.tool import set_logging, display_info, get_date
-from codae.tool import get_object_size, get_rmse, LossAnalyzer, PlotDrawer, export_parameters_to_json
-from codae.tool import load_dataset_of_embeddings, parse, my_collate
+from codae.tool import get_object_size, get_rmse, LossAnalyzer, PlotDrawer, export_parameters_to_json, get_ranking_loss
+from codae.tool import load_dataset_of_embeddings, parse, collate_embedding
 
-from codae.model import DenoisingAutoencoder
+from codae.model import EmbeddingDenoisingAutoencoder
 
 from codae.dataset import ConcatenatedEmbeddingDataset
 
@@ -94,13 +98,13 @@ if __name__ == "__main__":
     train_loader = DataLoader(
         dataset=dataset,
         batch_size=config["MODEL"]["BATCH_SIZE"],
-        collate_fn=my_collate,
+        collate_fn=collate_embedding,
         sampler=SubsetRandomSampler(train_indices))
 
     validation_loader = DataLoader(
         dataset=dataset,
         batch_size=config["MODEL"]["BATCH_SIZE"],
-        collate_fn=my_collate,
+        collate_fn=collate_embedding,
         sampler=SubsetRandomSampler(validation_indices))
 
     # randomized corruption index
@@ -115,7 +119,7 @@ if __name__ == "__main__":
 
     io_size = config["DATASET"]["EMBEDDING_SIZE"]*len(config["DATASET"]["USED_CATEGORY"])
 
-    model = DenoisingAutoencoder(
+    model = EmbeddingDenoisingAutoencoder(
         io_size=io_size,
         z_size=config["MODEL"]["Z_SIZE"],
         embedding_size=config["DATASET"]["EMBEDDING_SIZE"],
@@ -140,9 +144,10 @@ if __name__ == "__main__":
 
     criterion = torch.nn.MSELoss()
 
-    # display information about the model & dataset
+    # display/save information about the model & dataset
+    metric_log = {}
+    metric_log = display_info(config, metric_log)
     args.log.info(model)
-    display_info(config)
 
 
     ############################################################################
@@ -150,12 +155,17 @@ if __name__ == "__main__":
 
     nb_train_batch = len(train_indices) / config["MODEL"]["BATCH_SIZE"]
     nb_validation_batch = len(validation_indices) / config["MODEL"]["BATCH_SIZE"]
+
+    metric_log["mean"] = []
+    metric_log["full_training_loss"],metric_log["partial_training_loss"]=[],[]
+    metric_log["full_validation_loss"],metric_log["partial_validation_loss"]=[],[]
     
     for epoch in range( config["MODEL"]["EPOCH"] ):
 
         args.log.info("===================================================== EPOCH = %d" %epoch)
 
         full_training_loss, partial_training_loss = 0, 0
+        ranking_loss, mean = 0, 0
 
         # corrupt each of the possibly missing input embeddings
         for augment_run in range(dataset.nb_used_category):
@@ -178,9 +188,14 @@ if __name__ == "__main__":
                 # apply forward pass to corrupted input data
                 output_data = model( c_input_data )
 
+                # compute ranking loss
+                #rl = get_ranking_loss(output_data, dataset, corrupt_idx, idx)
+                #ranking_loss += rl
+                #print(corrupt_idx)
+
                 # compute the global training loss
                 ftl = torch.sqrt(criterion(input_data, output_data))
-                full_training_loss += ftl
+                full_training_loss += ftl.item()
 
                 # backpropagate global training loss
                 optimizer.zero_grad()
@@ -191,12 +206,19 @@ if __name__ == "__main__":
                 input_data[c_mask], output_data[c_mask] = 0., 0.
                 partial_training_loss += torch.sqrt(criterion(
                     input_data,
-                    output_data))
+                    output_data)).item()
+
+                mean += input_data.mean().item()
 
         full_training_loss /= nb_train_batch*dataset.nb_used_category
         partial_training_loss /= nb_train_batch*dataset.nb_used_category
         args.log.info("TRAINING FULL RMSE      = %f" %full_training_loss)
-        args.log.info("TRAINING PARTIAL RMSE   = %f\n" %partial_training_loss)
+        args.log.info("TRAINING PARTIAL RMSE   = %f" %partial_training_loss)
+        args.log.info("MEAN   = %f\n" %(mean/nb_train_batch/dataset.nb_used_category))
+
+        metric_log["full_training_loss"].append( full_training_loss )
+        metric_log["partial_training_loss"].append( partial_training_loss )
+        metric_log["mean"].append( mean )
         
         full_validation_loss, partial_validation_loss = 0, 0
 
@@ -220,27 +242,34 @@ if __name__ == "__main__":
 
                 # compute the global validation loss
                 ftl = torch.sqrt(criterion(input_data, output_data))
-                full_validation_loss += ftl
+                full_validation_loss += ftl.item()
                 
                 # compute validation loss of missing embedding
                 input_data[c_mask], output_data[c_mask] = 0., 0.
                 partial_validation_loss += torch.sqrt(criterion(
                     input_data,
-                    output_data))
+                    output_data)).item()
 
         full_validation_loss /= nb_validation_batch*dataset.nb_used_category
         partial_validation_loss /= nb_validation_batch*dataset.nb_used_category
         args.log.info("VALIDATION FULL RMSE    = %f" %full_validation_loss)
         args.log.info("VALIDATION PARTIAL RMSE = %f\n" %partial_validation_loss)
 
+        metric_log["full_validation_loss"].append( full_validation_loss )
+        metric_log["partial_validation_loss"].append( partial_validation_loss )
+
     args.log.info("DONE.")
 
 
     ############################################################################
     # log/plot #################################################################
-    
-    """
-    plot_drawer.add( data=[ training_rmses, validation_rmses ], title="RMSE", legend=["training rmse", "validation_rmse"], display=True )
-    plot_drawer.export_to_png(idx = 0, export_path=output_dir)
-    export_parameters_to_json(args, output_dir)
-    """
+
+    epoch_axis = np.arange(0, config["MODEL"]["EPOCH"])
+
+    plt.plot(
+        epoch_axis, metric_log["full_validation_loss"],
+        epoch_axis, metric_log["partial_validation_loss"],
+        epoch_axis, metric_log["full_training_loss"],
+        epoch_axis, metric_log["partial_training_loss"])
+    plt.ylabel('RMSE')
+    plt.savefig(os.path.join(args.output_path,"validation_RMSE.png"))

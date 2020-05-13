@@ -1,2 +1,3 @@
 from .cnn_autoencoder import cnnAutoencoder
-from .denoising_autoencoder import DenoisingAutoencoder
+from .embedding_denoising_autoencoder import EmbeddingDenoisingAutoencoder
+from .mixed_variable_denoising_autoencoder import MixedVariableDenoisingAutoencoder

@@ -13,3 +13,5 @@ tmp/
 tmp/*
 log/
 log/*
+codae.egg-info/
+codae.egg-info/*

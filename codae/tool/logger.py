@@ -35,7 +35,7 @@ def set_logging(log_file_path="/mnt/ramdisk/", log_file_name=None, logging_level
     return logging
 
     
-def display_info(config):
+def display_info(config, metric_log=None):
 
     print("")
     logging.info("### LEARNING RATE = %f" %config["MODEL"]["LEARNING_RATE"])
@@ -49,6 +49,22 @@ def display_info(config):
     logging.info("### Z SIZE = %d" %config["MODEL"]["Z_SIZE"])
     logging.info("### IO SIZE = %d" %(len(config["DATASET"]["USED_CATEGORY"])*config["DATASET"]["EMBEDDING_SIZE"]))
     logging.info("### NB CATEGORY = %d\n" %(len(config["DATASET"]["USED_CATEGORY"])))
+
+    if metric_log != None:
+
+        metric_log["LEARNING_RATE"] = config["MODEL"]["LEARNING_RATE"]
+        metric_log["WEIGHT_DECAY"] = config["MODEL"]["WEIGHT_DECAY"]
+        metric_log["EPOCH"] = config["MODEL"]["EPOCH"]
+        metric_log["BATCH_SIZE"] = config["MODEL"]["BATCH_SIZE"]
+        metric_log["NB_INPUT_LAYER"] = config["MODEL"]["NB_INPUT_LAYER"]
+        metric_log["NB_OUTPUT_LAYER"] = config["MODEL"]["NB_OUTPUT_LAYER"]
+        metric_log["STEEP_LAYER_SIZE"] = config["MODEL"]["STEEP_LAYER_SIZE"]
+        metric_log["EMBEDDING_SIZE"] = config["DATASET"]["EMBEDDING_SIZE"]
+        metric_log["Z_SIZE"] = config["MODEL"]["Z_SIZE"]
+        metric_log["IO_SIZE"] = len(config["DATASET"]["USED_CATEGORY"])*config["DATASET"]["EMBEDDING_SIZE"]
+        metric_log["NB_CATEGORY"] = len(config["DATASET"]["USED_CATEGORY"])
+
+        return metric_log
 
 
 def get_date():

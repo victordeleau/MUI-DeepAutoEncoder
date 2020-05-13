@@ -13,14 +13,22 @@ import numpy as np
 from codae.dataset import ConcatenatedEmbeddingDataset
 
 
-def my_collate(batch):
+def collate_embedding(batch):
     """
-    merge list of torch.Tensor into single Tensor by stacking them
+    unzip and merge list of torch.Tensor into single Tensor by stacking them
     """
 
     batch, indices = zip(*batch)
 
     return torch.stack(batch), indices
+
+
+def simple_collate(batch):
+    """
+    merge list of torch.Tensor into single Tensor by stacking them
+    """
+
+    return torch.stack(batch)
 
 
 def load_dataset_of_embeddings(embedding_path, config, cache_dir="tmp/"):

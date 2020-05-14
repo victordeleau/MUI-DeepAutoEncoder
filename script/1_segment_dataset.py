@@ -12,6 +12,7 @@ from PIL import Image
 import yaml
 
 from codae.processing import extract_part_from_polygons
+from codae.processing import extract_part_from_bbox
 
 
 def parse():
@@ -22,10 +23,12 @@ def parse():
     parser.add_argument('--output_path', type=str, required=True)
 
     parser.add_argument('--dataset_name', type=str, default="modanet")
-
+    
     parser.add_argument('--dataset_path', type=str, required=True)
 
-    parser.add_argument('--merge_category', type=bool, required=True, default=True)
+    parser.add_argument('--merge_category', type=bool, default=True)
+
+    parser.add_argument('--use_mask', type=bool, default=False)
 
     return parser.parse_args()
 
@@ -116,7 +119,6 @@ if __name__ == "__main__":
         except:
             raise Exception("Annotation file for Imaterialist not found")
 
-        
 
     # empty output directory
     choice = input("Erase output directory ? (y/Y/n/N)")
@@ -192,18 +194,28 @@ if __name__ == "__main__":
 
             image_size = image.size
 
-            try: # extract part from polygon
+            if args.use_mask:
 
-                p = ann["segmentation"][0]
+                try: # extract part from polygon
 
-                # from (x1, y1, x2, y2, ...) to ((x1, y1), (x2, y2), ...)
-                p = [[p[i*2], p[(i*2)+1]] for i in range(int(len(p)/2))]
+                    p = ann["segmentation"][0]
 
-                extracted_part = extract_part_from_polygons(
-                    image, [p], crop=True )
+                    # from (x1, y1, x2, y2, ...) to ((x1, y1), (x2, y2), ...)
+                    p = [[p[i*2], p[(i*2)+1]] for i in range(int(len(p)/2))]
 
-            except:
-                print("Error while extracting parts from polygons, image ID %d." %image_id)
+                    extracted_part = extract_part_from_polygons(
+                        image, [p], crop=True )
+
+                except:
+                    print("Error while extracting parts from polygons, image ID %d." %image_id)
+
+            else: # else use bbox
+
+                try:
+                    extracted_part = extract_part_from_bbox(
+                        image, ann["bbox"] )
+                except:
+                    print("Error while extracting part from bbox, image ID %d." %image_id)
 
             m = np.mean(extracted_part)
             if m < 0.01: # filter black images

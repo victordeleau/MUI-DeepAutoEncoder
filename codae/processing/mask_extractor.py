@@ -8,43 +8,15 @@ import cv2
 import numpy as np
 
 
-def extract_parts_from_mask(image, mask_image, labels, boxes, crop=False):
-
+def extract_part_from_bbox(image, bbox):
     """
-    Extract each detected parts (crop + blackened background)
-    in an image using masks and boxes.
-
-    arguments:
-        image: rgb opencv image.
-            The image in which parts should be extracted.
-        mask_image: grayscale (!) opencv image.
-            The masked image used to mask the background of extracted parts.
-        labels: list of predicted class index.
-        boxes: list of of [x1,y1,x2,y2] bounding boxes.
-
-    return:
-        list of extracted parts as opencv images in boxes order.
+    crop image using bounding box [x,y,width,height]
+    input
+        image : PIL.Image
+        bbox : list
     """
 
-    extracted_parts = []
-
-    for i in range(len(boxes)):
-
-        # apply mask to cropped image
-        shape = image.shape
-        part_masked = copy(image).reshape([shape[0]*shape[1], 3])
-        part_masked[ np.where((mask_image.flatten() != labels[i])) ] = [0, 0, 0]
-        part_masked = part_masked.reshape([shape[0], shape[1], 3])
-
-        # crop using bounding box
-        if crop:
-            part_masked = part_masked[int(boxes[i][1]):int(boxes[i][3]), int(boxes[i][0]):int(boxes[i][2]), :]
-
-        extracted_parts.append(\
-            cv2.cvtColor(part_masked, cv2.COLOR_BGR2RGB))
-
-    return extracted_parts
-
+    return np.array(image)[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], :]
 
 
 def extract_part_from_polygons(image, polygons, crop=False):

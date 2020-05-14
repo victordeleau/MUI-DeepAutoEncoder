@@ -79,7 +79,7 @@ class EmbeddingDenoisingAutoencoder(torch.nn.Module):
         else:
             input_layer.append( torch.nn.Linear(
                 io_size-((self.nb_input_layer-1)*input_layer_increment), z_size) )
-        input_layer.append( activation(True) )
+        #input_layer.append( activation(True) )
 
         self.input_layer = torch.nn.Sequential( *input_layer ) # join encoder layers
 
@@ -115,8 +115,7 @@ class EmbeddingDenoisingAutoencoder(torch.nn.Module):
             torch.nn.Linear(
                 z_size+((nb_output_layer-1)*output_layer_increment),
                 io_size) )
-        output_layer.append( activation(True) )
-        #
+        #output_layer.append( activation(True) )
             
         self.output_layer = torch.nn.Sequential( *output_layer ) # join decoder layers
 

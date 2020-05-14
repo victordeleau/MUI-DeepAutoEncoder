@@ -1,10 +1,14 @@
 # tools related to mesuring stuff
 
-import numpy as np
 import os
 import math
 import json
+import operator
+
+import torch
+import numpy as np
 import matplotlib.pyplot as plt
+
 
 """
     Recursively finds size of objects
@@ -234,13 +238,13 @@ def export_parameters_to_json(args, output_dir):
         f.write(content)
 
 
-def get_ranking_loss(prediction, dataset, corrupt_idx, idx):
+def get_ranking_loss(prediction, dataset, corrupt_embedding, idx, sub_index):
     """
     Compute item ranking loss
     input 
         prediction : torch.Tensor
             the predicted observation
-        corrupt_idx : list(list)
+        corrupt_embedding : list(list)
             batch size list of list of corrupted indices
         dataset : torch.data.Dataset
             the dataset of original embedding
@@ -251,13 +255,23 @@ def get_ranking_loss(prediction, dataset, corrupt_idx, idx):
 
     ranking_loss = 0
 
-    for i in idx: # for each observation
+    batch_index = 0
+    for i in idx: # for each observation in batch
 
-        for j in range(corrupt_idx[i]): # for each corrupted index
+        # extract predicted missing embedding
+        predicted_missing_embedding = prediction[batch_index][corrupt_embedding[batch_index]*dataset.embedding_size : (corrupt_embedding[batch_index]+1)*dataset.embedding_size]
 
-            # cosine similarity between prediction and inventory
+        # compute similarity in corresponding inventory
+        s = torch.matmul(
+            predicted_missing_embedding,
+            dataset.data_per_category[corrupt_embedding[batch_index]]).tolist()
 
-            # rank of the predicted item
+        batch_index += 1
 
-            ranking_loss += 0
+        rank = 0
+        for j in sub_index:
+            if s[i] > s[j]:
+                rank += 1
+        ranking_loss += rank/len(sub_index)
 
+    return ranking_loss/len(idx)

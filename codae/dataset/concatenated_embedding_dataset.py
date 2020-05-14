@@ -39,16 +39,35 @@ class ConcatenatedEmbeddingDataset(Dataset):
 
         self.embedding_size = len(
             self.filtered_embeddings[ self.index[0] ][ self.used_category[0] ] )
+    
+        self.data_per_category = {}
+        for category in range(self.nb_used_category):
+            self.data_per_category[category] = torch.empty((
+                len(self.index),
+                self.embedding_size))
 
-        self.filtered_embeddings_tensor = torch.empty((len(self.index),
+        # vectorize data
+
+        self.data = torch.empty((len(self.index),
             self.nb_used_category*self.embedding_size))
 
         for c, i in enumerate(self.index):
+
             r = torch.Tensor()
-            for category in self.used_category:
-                r = torch.cat( (r, torch.Tensor(
-                self.filtered_embeddings[i][category] ) ) )
-            self.filtered_embeddings_tensor[c] = r
+
+            for n, category in enumerate(self.used_category):
+
+                self.data_per_category[n][c] = torch.Tensor(
+                self.filtered_embeddings[i][category] )
+
+                r = torch.cat( (r, self.data_per_category[n][c] ) )
+
+            self.data[c] = r
+
+        for category in range(self.nb_used_category):
+
+            self.data_per_category[category] = torch.transpose(
+                self.data_per_category[category], 0, 1)
 
 
     def __len__(self):
@@ -58,7 +77,7 @@ class ConcatenatedEmbeddingDataset(Dataset):
 
     def __getitem__(self, idx):
 
-        return self.filtered_embeddings_tensor[idx], idx
+        return self.data[idx], idx
 
     
     def to(self, device):
@@ -68,19 +87,7 @@ class ConcatenatedEmbeddingDataset(Dataset):
             device : torch.device
         """
 
-        self.filtered_embeddings_tensor = self.filtered_embeddings_tensor.to(device)
+        self.data = self.data.to(device)
 
-    
-    def cosine_similarity(self, query, indices=None):
-        """
-        compute cosine_similarity between query embedding and dataset of embedding.
-        input
-            query : torch.Tensor (len == self.embedding_size)
-                query tensor for which we want to find the most similar other
-            indices : list(int)
-                subset of indices of the dataset (default consider all of them)
-        output
-
-        """
-
-        pass
+        for i in range(len(self.data_per_category.keys())):
+            self.data_per_category[i] = self.data_per_category[i].to(device)

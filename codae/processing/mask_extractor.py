@@ -16,7 +16,7 @@ def extract_part_from_bbox(image, bbox):
         bbox : list
     """
 
-    return np.array(image)[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], :]
+    return np.array(image)[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2], :]
 
 
 def extract_part_from_polygons(image, polygons, crop=False):

@@ -7,10 +7,12 @@ import numpy as np
 
 class MixedVariableDenoisingAutoencoder(torch.nn.Module):
     
-    def __init__(self, input_arch, z_size, nb_input_layer=2, nb_output_layer=2, steep_layer_size=True, activation=torch.nn.ReLU):
+    def __init__(self, input_arch, io_size, z_size, nb_input_layer=2, nb_output_layer=2, steep_layer_size=True, activation=torch.nn.ReLU):
         """input
             input_arch : dict
                 list of dict {"name": name, "type": "regression"/"classification", "size": int, "lambda": 1, "position": int}
+            io_size : int
+                size of the input layer
             z_size : int
                 size of the embedding layer
                 default : 128
@@ -28,10 +30,9 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
 
         super(MixedVariableDenoisingAutoencoder, self).__init__()
 
-        self.io_size = d["position"] + d["size"]
-
         self.input_arch = input_arch
         self.z_size = z_size
+        self.io_size = io_size
         
         self.nb_input_layer = nb_input_layer
         self.nb_output_layer = nb_output_layer

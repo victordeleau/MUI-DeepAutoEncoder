@@ -2,11 +2,12 @@
 import json
 import os, sys
 import math
+import logging
+import argparse
 
 import yaml
 import numpy as np
 import pandas as pd
-import argparse
 from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -14,7 +15,8 @@ import torch
 
 from codae.dataset import MixedVariableDataset
 from codae.model import MixedVariableDenoisingAutoencoder
-from codae.tool import simple_collate
+from codae.tool import collate_embedding, set_logging
+
 
 def parse():
 
@@ -40,6 +42,10 @@ if __name__=="__main__":
     print("===== Train DAE on Abalone dataset =====")
 
     args = parse()
+
+    vars(args)["log"] = set_logging(
+        logging_level=(logging.DEBUG if args.debug else logging.INFO),
+        log_file_path="log/")
 
     # open config file
     with open(args.config, 'r') as stream:
@@ -79,17 +85,60 @@ if __name__=="__main__":
     train_loader = DataLoader(
         dataset=dataset,
         batch_size=config["MODEL"]["BATCH_SIZE"],
-        collate_fn=simple_collate,
+        collate_fn=collate_embedding,
         sampler=SubsetRandomSampler(train_indices))
 
     validation_loader = DataLoader(
         dataset=dataset,
         batch_size=config["MODEL"]["BATCH_SIZE"],
-        collate_fn=simple_collate,
+        collate_fn=collate_embedding,
         sampler=SubsetRandomSampler(validation_indices))
 
 
     ############################################################################
+    # initialize model #########################################################
+
+    args.log.info("Initializing the model.")
+
+    model = MixedVariableDenoisingAutoencoder(
+        input_arch=dataset.arch,
+        io_size=dataset.io_size,
+        z_size=config["MODEL"]["Z_SIZE"],
+        nb_input_layer=config["MODEL"]["NB_INPUT_LAYER"],
+        nb_output_layer=config["MODEL"]["NB_OUTPUT_LAYER"],
+        steep_layer_size=config["MODEL"]["STEEP_LAYER_SIZE"]) 
+
+    use_gpu = torch.cuda.is_available()
+    if use_gpu:
+        args.log.info("CUDA available, loading GPU device")
+    else:
+        args.log.info("No CUDA device available, using CPU") 
+        
+    device = torch.device("cuda:0" if use_gpu else "cpu")
+    model.to(device)
+    dataset.to(device)
+
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=config["MODEL"]["LEARNING_RATE"],
+        weight_decay=config["MODEL"]["WEIGHT_DECAY"])
+
+    criterion = torch.nn.MSELoss()
+
+    # display/save information about the model & dataset
+    metric_log = {}
+
+
+    ############################################################################
     # training #################################################################
+
+    for epoch in range( config["MODEL"]["EPOCH"] ):
+
+        args.log.info("===================================================== EPOCH = %d" %epoch)
+
+        for i, input_data in enumerate(train_loader):
+
+            print(i, input_data)
+
 
     

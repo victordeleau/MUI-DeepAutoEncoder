@@ -20,13 +20,15 @@ class MixedVariableDataset(Dataset):
 
         self.nb_observation = len(self.pd_dataset)
 
-        self.observation_length = 0
+        self.io_size = 0
 
         self.arch = [] # build architecture
         for i, column in enumerate(self.pd_dataset):
 
             self.arch.append({})
             self.arch[-1]["name"] = column
+
+            # weight of variable in loss function [0 : 1] 
             self.arch[-1]["lambda"] = 1 # for now TODO
 
             if self.pd_dataset.dtypes[i] == "float64" or self.pd_dataset.dtypes[i] == "int64":
@@ -39,14 +41,12 @@ class MixedVariableDataset(Dataset):
                 self.arch[-1]["type"] = "classification"
                 print("C%d " %self.arch[-1]["size"], end="")
             
-            self.arch[-1]["position"] = self.observation_length
-            self.observation_length += self.arch[-1]["size"]
-
-        print()
+            self.arch[-1]["position"] = self.io_size
+            self.io_size += self.arch[-1]["size"]
             
         # vectorize dataset
         self.map = {}
-        self.dataset = np.empty(shape=(self.nb_observation, self.observation_length))
+        self.dataset = np.empty(shape=(self.nb_observation, self.io_size))
         for i in range(self.nb_observation):
             
             for variable in self.arch:
@@ -74,6 +74,8 @@ class MixedVariableDataset(Dataset):
                 else: # regression
                     self.dataset[i][variable["position"]:variable["position"]+variable["size"]] = self.pd_dataset[variable["name"]][i]
 
+        self.dataset = torch.Tensor(self.dataset)
+
 
     def __len__(self):
 
@@ -82,7 +84,7 @@ class MixedVariableDataset(Dataset):
 
     def __getitem__(self, idx):
 
-        return self.filtered_embeddings_tensor[idx], idx
+        return self.dataset[idx], idx
 
 
     def _categorical_to_OHE(self, label, max):
@@ -112,7 +114,7 @@ class MixedVariableDataset(Dataset):
             device : torch.device
         """
 
-        self.filtered_embeddings_tensor = self.filtered_embeddings_tensor.to(device)
+        self.dataset = self.dataset.to(device)
 
     
     def cosine_similarity(self, query, indices=None):

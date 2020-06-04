@@ -35,20 +35,21 @@ def set_logging(log_file_path="/mnt/ramdisk/", log_file_name=None, logging_level
     return logging
 
     
-def display_info(config, metric_log=None):
+def display_info(config, nb_observation, metric_log=None):
 
     print("")
-    logging.info("### LEARNING RATE = %f" %config["MODEL"]["LEARNING_RATE"])
-    logging.info("### WEIGHT DECAY = %f" %config["MODEL"]["WEIGHT_DECAY"])
-    logging.info("### NB EPOCH = %d" %config["MODEL"]["EPOCH"])
-    logging.info("### BATCH SIZE = %d" %config["MODEL"]["BATCH_SIZE"])
-    logging.info("### NB INPUT_LAYER = %d" %config["MODEL"]["NB_INPUT_LAYER"])
-    logging.info("### NB OUTPUT LAYER = %d" %config["MODEL"]["NB_OUTPUT_LAYER"])
-    logging.info("### STEEP LAYER SIZE = %d" %config["MODEL"]["STEEP_LAYER_SIZE"])
-    logging.info("### EMBEDDING SIZE = %d" %config["DATASET"]["EMBEDDING_SIZE"])
-    logging.info("### Z SIZE = %d" %config["MODEL"]["Z_SIZE"])
-    logging.info("### IO SIZE = %d" %(len(config["DATASET"]["USED_CATEGORY"])*config["DATASET"]["EMBEDDING_SIZE"]))
-    logging.info("### NB CATEGORY = %d\n" %(len(config["DATASET"]["USED_CATEGORY"])))
+    logging.info("### LEARNING RATE   = %f" %config["MODEL"]["LEARNING_RATE"])
+    logging.info("### WEIGHT DECAY    = %f" %config["MODEL"]["WEIGHT_DECAY"])
+    logging.info("### NB EPOCH        = %d" %config["MODEL"]["EPOCH"])
+    logging.info("### BATCH SIZE      = %d" %config["MODEL"]["BATCH_SIZE"])
+    logging.info("### NB IN LAYER     = %d" %config["MODEL"]["NB_INPUT_LAYER"])
+    logging.info("### NB OUT LAYER    = %d" %config["MODEL"]["NB_OUTPUT_LAYER"])
+    logging.info("### STEEP LAYER     = %d" %config["MODEL"]["STEEP_LAYER_SIZE"])
+    logging.info("### EMBEDDING SIZE  = %d" %config["DATASET"]["EMBEDDING_SIZE"])
+    logging.info("### Z SIZE          = %d" %config["MODEL"]["Z_SIZE"])
+    logging.info("### IO SIZE         = %d" %(len(config["DATASET"]["USED_CATEGORY"])*config["DATASET"]["EMBEDDING_SIZE"]))
+    logging.info("### NB CATEGORY     = %d" %(len(config["DATASET"]["USED_CATEGORY"])))
+    logging.info("### NB OBSERVATION  = %d\n" %(nb_observation))
 
     if metric_log != None:
 
@@ -63,6 +64,7 @@ def display_info(config, metric_log=None):
         metric_log["Z_SIZE"] = config["MODEL"]["Z_SIZE"]
         metric_log["IO_SIZE"] = len(config["DATASET"]["USED_CATEGORY"])*config["DATASET"]["EMBEDDING_SIZE"]
         metric_log["NB_CATEGORY"] = len(config["DATASET"]["USED_CATEGORY"])
+        metric_log["NB_OBSERVATION"] = nb_observation
 
         return metric_log
 

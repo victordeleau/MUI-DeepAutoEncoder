@@ -214,7 +214,8 @@ if __name__ == "__main__":
                 try:
                     extracted_part = extract_part_from_bbox(
                         image, ann["bbox"] )
-                except:
+                except Exception as e:
+                    print(e)
                     print("Error while extracting part from bbox, image ID %d." %image_id)
 
             m = np.mean(extracted_part)

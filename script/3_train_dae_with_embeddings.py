@@ -45,6 +45,8 @@ def parse():
 
     parser.add_argument('--debug', type=bool, default=True)
 
+    parser.add_argument('--rank', type=bool, default=False)
+
     return parser.parse_args()
 
 
@@ -92,8 +94,8 @@ if __name__ == "__main__":
         np.random.seed(config["SEED"])
         np.random.shuffle(indices)
 
-    train_indices = indices[nb_train_observation:]
-    validation_indices = indices[:nb_validation_observation]
+    train_indices = indices[:nb_train_observation]
+    validation_indices = indices[nb_train_observation:]
 
     train_loader = DataLoader(
         dataset=dataset,
@@ -129,9 +131,9 @@ if __name__ == "__main__":
 
     use_gpu = torch.cuda.is_available()
     if use_gpu:
-        args.log.info("CUDA available, loading GPU device\n")
+        args.log.info("CUDA available, loading GPU device")
     else:
-        args.log.info("No CUDA device available, using CPU\n") 
+        args.log.info("No CUDA device available, using CPU") 
         
     device = torch.device("cuda:0" if use_gpu else "cpu")
     model.to(device)
@@ -146,7 +148,7 @@ if __name__ == "__main__":
 
     # display/save information about the model & dataset
     metric_log = {}
-    metric_log = display_info(config, metric_log)
+    metric_log = display_info(config, dataset.nb_observation, metric_log)
     args.log.info(model)
 
 
@@ -169,7 +171,9 @@ if __name__ == "__main__":
         args.log.info("===================================================== EPOCH = %d" %epoch)
 
         full_training_loss, partial_training_loss = 0, 0
-        training_ranking_loss, mean, std = 0, 0, 0
+        full_validation_loss, partial_validation_loss = 0, 0
+        validation_ranking_loss, training_ranking_loss = 0, 0
+        mean, std = 0, 0
 
         # corrupt each of the possibly missing input embeddings
         for augment_run in range(dataset.nb_used_category):
@@ -193,41 +197,37 @@ if __name__ == "__main__":
                 output_data = model( c_input_data )
 
                 # compute ranking loss
-                trl = get_ranking_loss(output_data, dataset, corrupt_embedding, idx, train_indices)
-                training_ranking_loss += trl
+                if args.rank:
+                    trl = get_ranking_loss(output_data, dataset, corrupt_embedding, idx, train_indices)
+                    training_ranking_loss += trl
 
                 # compute the global training loss
                 ftl = torch.sqrt(criterion(input_data, output_data))
-                full_training_loss += ftl.item()
+                full_training_loss += ftl.item()*dataset.scale
 
                 # backpropagate global training loss
                 optimizer.zero_grad()
                 ftl.backward()
                 optimizer.step()
-                
-                # compute training loss of missing embedding
-                input_data[c_mask], output_data[c_mask] = 0., 0.
-                partial_training_loss += torch.sqrt(criterion(
-                    input_data,
-                    output_data)).item()
 
-                mean += input_data.mean().item()
-                std += input_data.std().item()
+                #mean += input_data.mean().item()
+                #std += input_data.std().item()
+
+                partial_training_loss += torch.sqrt(criterion(
+                    input_data*c_mask.float(),
+                    output_data*c_mask.float())).item()*dataset.scale
 
         full_training_loss /= nb_train_batch*dataset.nb_used_category
-        partial_training_loss /= nb_train_batch*dataset.nb_used_category
+        partial_training_loss /= nb_train_batch
         training_ranking_loss /= nb_train_batch*dataset.nb_used_category
 
-        args.log.info("TRAINING FULL RMSE      = %f" %full_training_loss)
-        args.log.info("TRAINING PARTIAL RMSE   = %f" %partial_training_loss)
-        args.log.info("TRAINING RANKING        = %f" %training_ranking_loss)
+        args.log.info("TRAINING FULL RMSE      = %7f" %full_training_loss)
+        args.log.info("TRAINING PARTIAL RMSE   = %7f" %partial_training_loss)
+        args.log.info("TRAINING RANKING        = %7f" %training_ranking_loss)
 
         metric_log["training_ranking_loss"].append( training_ranking_loss )
         metric_log["full_training_loss"].append( full_training_loss )
         metric_log["partial_training_loss"].append( partial_training_loss )
-
-        full_validation_loss, partial_validation_loss = 0, 0
-        validation_ranking_loss = 0
 
         # corrupt each of the possibly missing input embeddings
         for augment_run in range(dataset.nb_used_category):
@@ -251,40 +251,39 @@ if __name__ == "__main__":
                 output_data = model( c_input_data )
 
                 # compute ranking loss
-                vrl = get_ranking_loss(output_data, dataset, corrupt_embedding, idx, validation_indices)
-                validation_ranking_loss += vrl
+                if args.rank:
+                    vrl = get_ranking_loss(output_data, dataset, corrupt_embedding, idx, validation_indices)
+                    validation_ranking_loss += vrl
 
                 # compute the global validation loss
                 ftl = torch.sqrt(criterion(input_data, output_data))
-                full_validation_loss += ftl.item()
-                
-                # compute validation loss of missing embedding
-                input_data[c_mask], output_data[c_mask] = 0., 0.
-                partial_validation_loss += torch.sqrt(criterion(
-                    input_data,
-                    output_data)).item()
+                full_validation_loss += ftl.item()*dataset.scale
 
-                mean += input_data.mean().item()
-                std += input_data.std().item()
+                #mean += input_data.mean().item()
+                #std += input_data.std().item()
+
+                partial_validation_loss += torch.sqrt(criterion(
+                    input_data*c_mask.float(),
+                    output_data*c_mask.float())).item()*dataset.scale
 
         full_validation_loss /= nb_validation_batch*dataset.nb_used_category
-        partial_validation_loss /= nb_validation_batch*dataset.nb_used_category
+        partial_validation_loss /= nb_validation_batch
         validation_ranking_loss /= nb_validation_batch*dataset.nb_used_category
 
-        mean /= (nb_train_batch+nb_validation_batch)*dataset.nb_used_category
-        std /= (nb_train_batch+nb_validation_batch)*dataset.nb_used_category
+        #mean /= (nb_train_batch+nb_validation_batch)*dataset.nb_used_category
+        #std /= (nb_train_batch+nb_validation_batch)*dataset.nb_used_category
 
-        args.log.info("VALIDATION FULL RMSE    = %f" %full_validation_loss)
-        args.log.info("VALIDATION PARTIAL RMSE = %f" %partial_validation_loss)
-        args.log.info("VALIDATION RANKING      = %f" %validation_ranking_loss)
-        args.log.info("DATA MEAN               = %f" %mean)
-        args.log.info("DATA STD                = %f\n" %std)
+        args.log.info("VALIDATION FULL RMSE    = %7f" %full_validation_loss)
+        args.log.info("VALIDATION PARTIAL RMSE = %7f" %partial_validation_loss)
+        args.log.info("VALIDATION RANKING      = %7f\n" %validation_ranking_loss)
+        #args.log.info("DATA MEAN               = %7f" %mean)
+        #args.log.info("DATA STD                = %7f\n" %std)
 
         metric_log["validation_ranking_loss"].append( validation_ranking_loss )
         metric_log["full_validation_loss"].append( full_validation_loss )
         metric_log["partial_validation_loss"].append( partial_validation_loss )
-        metric_log["mean"].append( mean )
-        metric_log["std"].append( std )
+        #metric_log["mean"].append( mean )
+        #metric_log["std"].append( std )
 
     args.log.info("TRAINING HAS ENDED.")
 
@@ -298,42 +297,54 @@ if __name__ == "__main__":
     if not os.path.exists(d):
         os.makedirs(d)
 
-    # plot RMSE ################################################################
-
     epoch_axis = np.arange(0, config["MODEL"]["EPOCH"])
 
-    plt.plot(epoch_axis, metric_log["full_validation_loss"],
-        label="Full validation RMSE")
-    plt.plot(epoch_axis, metric_log["partial_validation_loss"],
-        label="Partial validation RMSE")
-    plt.plot(epoch_axis, metric_log["full_training_loss"],
-        label="Full training RMSE")
+    # plot training RMSE #######################################################
+
     plt.plot(epoch_axis, metric_log["partial_training_loss"],
         label="Partial training RMSE")
-
-    plt.plot(epoch_axis, metric_log["mean"],
-        label="Input data mean")
+    plt.plot(epoch_axis, metric_log["partial_validation_loss"],
+        label="Partial validation RMSE")
 
     plt.xlabel('Epoch')
     plt.ylabel('RMSE')
     plt.legend(loc='best')
 
-    plt.savefig(os.path.join(d,"RMSE.png"))
+    plt.savefig(os.path.join(d,"partial_RMSE.png"))
     plt.clf()
 
-    plt.plot(epoch_axis, metric_log["training_ranking_loss"],
-        label="Training ranking accuracy")
-    plt.plot(epoch_axis, metric_log["validation_ranking_loss"],
-        label="Validation ranking accuracy")
-    plt.plot(epoch_axis, [0.5 for i in range(config["MODEL"]["EPOCH"])], label="Mean ranking accuracy")
+    # plot validation RMSE #####################################################
+
+    plt.plot(epoch_axis, metric_log["full_training_loss"],
+        label="Full training RMSE")
+    plt.plot(epoch_axis, metric_log["full_validation_loss"],
+        label="Full validation RMSE")
 
     plt.xlabel('Epoch')
-    plt.ylabel('Ranking accuracy')
-    plt.ylim(ymin=0, ymax=1)
+    plt.ylabel('RMSE')
+    plt.legend(loc='best')
 
-    plt.savefig(os.path.join(d,"RANKING.png"))
+    plt.savefig(os.path.join(d,"full_RMSE.png"))
     plt.clf()
 
+    # plot ranking loss ########################################################
+
+    if args.rank:
+
+        plt.plot(epoch_axis, metric_log["training_ranking_loss"],
+            label="Training ranking accuracy")
+        plt.plot(epoch_axis, metric_log["validation_ranking_loss"],
+            label="Validation ranking accuracy")
+        plt.plot(epoch_axis, [0.5 for i in range(config["MODEL"]["EPOCH"])], label="Mean ranking accuracy")
+
+        plt.xlabel('Epoch')
+        plt.ylabel('Ranking accuracy')
+        plt.ylim(ymin=0, ymax=1)
+        plt.legend(loc='best')
+
+        plt.savefig(os.path.join(d,"RANKING.png"))
+        plt.clf()
+    
     # export metric ############################################################
 
     with open(os.path.join(d, "metric_log.json"),'w+') as f:

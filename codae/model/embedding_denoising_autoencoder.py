@@ -8,7 +8,7 @@ import numpy as np
 
 class EmbeddingDenoisingAutoencoder(torch.nn.Module):
     
-    def __init__(self, io_size, z_size, embedding_size, nb_input_layer=2, nb_output_layer=2, steep_layer_size=True, activation=torch.nn.ReLU):
+    def __init__(self, io_size, z_size, embedding_size, nb_input_layer=2, nb_output_layer=2, steep_layer_size=True, activation=torch.nn.LeakyReLU):
         """input
             io_size : int
                 size of the input and output layer
@@ -279,7 +279,7 @@ class EmbeddingDenoisingAutoencoder(torch.nn.Module):
                 indices of corrupted categories
         """
 
-        c_input = input_data
+        c_input = input_data.clone()
         c_mask = torch.empty(
             input_data.size(),
             device=device)

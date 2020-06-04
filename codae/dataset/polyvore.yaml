@@ -1,0 +1,8 @@
+DATASET_NAME: polyvore
+IMAGE_PATH: images/
+ANNOTATION_FILE: train_no_dup.json
+CATEGORY:
+  top: ["top"]
+  bottom: ["pants", "shorts", "skirt"]
+  shoe: ["boots", "footwear"]
+IMAGE_EXTENSION: "png"

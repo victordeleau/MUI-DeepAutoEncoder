@@ -8,7 +8,7 @@ import numpy as np
 
 class ConcatenatedEmbeddingDataset(Dataset):
 
-    def __init__(self, embeddings, used_category):
+    def __init__(self, embeddings, used_category, transform=None):
         """
         input
             embedding : dict
@@ -18,6 +18,8 @@ class ConcatenatedEmbeddingDataset(Dataset):
         """
 
         self.embeddings = embeddings
+
+        self.transform = transform
 
         self.used_category = used_category
         self.nb_used_category = len( self.used_category )
@@ -64,10 +66,17 @@ class ConcatenatedEmbeddingDataset(Dataset):
 
             self.data[c] = r
 
+        self.min = self.data.min()
+        self.max = self.data.max()
+        self.scale = self.max - self.min
+        self.scale = self.scale.item()
+
+        self.data = self.data / self.scale
+
         for category in range(self.nb_used_category):
 
             self.data_per_category[category] = torch.transpose(
-                self.data_per_category[category], 0, 1)
+                self.data_per_category[category], 0, 1) / self.scale
 
 
     def __len__(self):
@@ -76,6 +85,10 @@ class ConcatenatedEmbeddingDataset(Dataset):
 
 
     def __getitem__(self, idx):
+
+        if self.transform != None:
+
+            return self.transform(self.data[idx]), idx
 
         return self.data[idx], idx
 

@@ -72,10 +72,9 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
         else:
             input_layer.append( torch.nn.Linear(
                 io_size-((self.nb_input_layer-1)*input_layer_increment), z_size) )
-        input_layer.append( activation(True) )
+        #input_layer.append( activation(True) )
 
-        # join encoder layers
-        self.input_layer = torch.nn.Sequential( *input_layer ) 
+        self.input_layer = torch.nn.Sequential( *input_layer ) # join encoder layers
 
         # initialize layer's weights and biases
         self.input_layer.apply(self.init_weight_general_rule)
@@ -109,10 +108,9 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
             torch.nn.Linear(
                 z_size+((nb_output_layer-1)*output_layer_increment),
                 io_size) )
-        output_layer.append( activation(True) )
-        
-        # join decoder layers
-        self.output_layer = torch.nn.Sequential( *output_layer ) 
+        #output_layer.append( activation(True) )
+            
+        self.output_layer = torch.nn.Sequential( *output_layer ) # join decoder layers
 
         # initialize layer's weights and biases
         self.output_layer.apply(self.init_weight_general_rule)
@@ -254,7 +252,7 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
         return self
 
 
-    def corrupt(self, input_data, device, indices, corruption_type="zero_continuous"):
+    def corrupt(self, input_data, device, indices, arch, corruption_type="zero_continuous"):
         """
         corrupt input_data using requested corruption type
         input
@@ -262,6 +260,8 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
                 the piece of data to corrupt
             indices : list(list(int))
                 list of embedding index to corrupt
+            arch : dict
+                architecture of the input (regression/classification/offset/etc)
             corruption_type : str
                 type of corruption to apply
         output
@@ -275,12 +275,13 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
             return self._corrupt_zero_continuous(
                 input_data=input_data,
                 device=device,
-                indices=indices)
+                indices=indices,
+                arch=arch)
         else:
             raise Exception("Error: invalid corruption type requested (zero_continuous).")
 
 
-    def _corrupt_zero_continuous(self, input_data, device, indices):
+    def _corrupt_zero_continuous(self, input_data, device, indices, arch):
         """
         randomly set one of the input embeddings and set all values to zero.
         input
@@ -288,6 +289,8 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
                 the piece of data to corrupt
             indices : list(list(int))
                 list of embedding index to corrupt
+            arch : dict
+                architecture of the input (regression/classification/offset/etc)
         output
             c_input : torch.Tensor
                 the corrupted input data
@@ -295,17 +298,16 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
                 indices of corrupted categories
         """
 
-        c_input = input_data
+        c_input = input_data.clone()
         c_mask = torch.empty(
             input_data.size(),
             device=device)
 
         for i in range( input_data.size()[0] ): # for batch size 
-            
-            start = indices[i]*self.input_layer[indices[i]]["position"]
-            end = (indices[i]*self.input_layer[indices[i]]["position"]) + self.input_layer[indices[i]]["size"]
 
-            c_input[i][start:end]=0.0
-            c_mask[i][start:end]=True
+            # for each corrupted embedding
+            c_input[i][arch[indices[i]]["position"]:arch[indices[i]]["position"]+arch[indices[i]]["size"]]=0.0
+
+        c_mask = ( c_input == 0 )
 
         return c_input, c_mask

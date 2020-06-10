@@ -1,4 +1,3 @@
-#
 
 import random
 import hashlib
@@ -6,6 +5,7 @@ import glob
 import os, sys
 import pickle
 import json
+import itertools
 
 import torch
 import numpy as np
@@ -80,3 +80,29 @@ def load_dataset_of_embeddings(embedding_path, config, cache_dir="tmp/"):
         os.rename(os.path.join(cache_dir, "new_dataset_tmp.bin"), dataset_cache_name)
 
     return dataset
+
+
+def get_augmentation(nb_observation, nb_predictor, k_max):
+    """
+    Get corruption indices from 1 up to k_max < nb_predictor indices per observation.
+    input
+        nb_observation : int
+        nb_predictor : int
+        k_max : int
+    """
+
+    if (k_max < 0) | (k_max > nb_predictor-1):
+        raise Exception("Invalid k_max number. k_max > 0 && k_max < nb_predictor - 1")
+
+    indices = [i for i in range(nb_predictor)]
+    l = []
+
+    # get binomial coefficent indexes
+    for k in range(1, k_max+1):
+        l += list(itertools.combinations(indices, k))
+
+    output = []
+    for i in range(nb_observation):
+        output.append( random.sample(l, len(l)) )
+
+    return output

@@ -20,8 +20,9 @@ import torch
 
 from codae.dataset import MixedVariableDataset
 from codae.model import MixedVariableDenoisingAutoencoder
-from codae.tool import collate_embedding, set_logging, get_date
+from codae.tool import set_logging, get_date
 from codae.tool import CombinedCriterion
+from codae.tool import collate_embedding, get_augmentation
 
 
 def parse():
@@ -36,6 +37,12 @@ def parse():
     parser.add_argument('--config', type=str, required=True)
 
     parser.add_argument('--debug', type=bool, default=False)
+
+    # train with missing variables from 1 to m-1
+    parser.add_argument('--training_robustness', type=int, default=1)
+
+    # infer with missing variables from 1 to m-1
+    parser.add_argument('--inference_robustness', type=int, default=1)
 
     return parser.parse_args()
 
@@ -82,10 +89,12 @@ if __name__=="__main__":
         dataset.nb_observation * config["DATASET"]["SPLIT"][0])
     nb_validation_observation = dataset.nb_observation - nb_train_observation
 
+    # shuffle dataset
     if config["DATASET"]["SHUFFLE"]:
         np.random.seed(config["SEED"])
         np.random.shuffle(indices)
 
+    # split dataset
     train_indices = indices[:nb_train_observation]
     validation_indices = indices[nb_train_observation:]
 
@@ -101,9 +110,8 @@ if __name__=="__main__":
         collate_fn=collate_embedding,
         sampler=SubsetRandomSampler(validation_indices))
 
-    # randomized corrupted index
-    c = list( range( dataset.nb_predictor ) )
-    augment_index=[random.sample(c, len(c)) for i in range(dataset.nb_observation)]
+    # augment corrupted index 
+    augment_index = get_augmentation(nb_observation=dataset.nb_observation,nb_predictor=dataset.nb_predictor,k_max=args.training_robustness)
 
 
     ############################################################################
@@ -139,8 +147,7 @@ if __name__=="__main__":
     # mix regression + classification loss
     combined_criterion = CombinedCriterion(dataset.arch)
 
-    # display/save information about the model & dataset
-    metric_log = {}
+    metric_log = {} # display/save information about the model & dataset
 
     ############################################################################
     # training #################################################################
@@ -162,19 +169,18 @@ if __name__=="__main__":
 
         # training #############################################################
 
-        full_training_loss = 0
-        full_validation_loss = 0
+        full_training_loss, full_validation_loss = 0, 0
         partial_training_loss = [0 for i in range(dataset.nb_predictor)]
         partial_validation_loss = [0 for i in range(dataset.nb_predictor)]
 
-        for augment_run in range(dataset.nb_predictor):
+        for run in range(len(augment_index[0])):
 
             for c, (input_data, idx) in enumerate(train_loader):
 
                 print("AUGMENTATION RUN %2d/%2d BATCH NUMBER = %5d/%5d" %(
-                    augment_run+1, dataset.nb_predictor, c, nb_train_batch), end="\r")
+                    run+1, len(augment_index[0]), c, nb_train_batch), end="\r")
 
-                corrupt_embedding = [ augment_index[i][augment_run] for i in idx ]
+                corrupt_embedding = [ augment_index[i][run] for i in idx ]
                 
                 # corrupt input data using zero_continuous noise
                 c_input_data, c_mask = model.corrupt(
@@ -215,15 +221,15 @@ if __name__=="__main__":
         # validation ###########################################################
 
         # corrupt each of the possibly missing input embeddings
-        for augment_run in range(dataset.nb_predictor):
+        for run in range(len(augment_index[0])):
 
             # go over validation data ##########################################
             for c, (input_data, idx) in enumerate(validation_loader):
 
                 print("AUGMENTATION RUN %2d/%2d BATCH NUMBER = %5d/%5d" %(
-                    augment_run+1, dataset.nb_predictor, c, nb_validation_batch), end="\r")
+                    run+1, len(augment_index[0]), c, nb_validation_batch), end="\r")
 
-                corrupt_embedding = [ augment_index[i][augment_run] for i in idx ]
+                corrupt_embedding = [ augment_index[i][run] for i in idx ]
 
                 # corrupt input data using zero_continuous noise
                 c_input_data, c_mask = model.corrupt(

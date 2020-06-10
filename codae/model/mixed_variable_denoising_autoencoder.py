@@ -306,8 +306,10 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
         for i in range( input_data.size()[0] ): # for batch size 
 
             # for each corrupted embedding
-            c_input[i][arch[indices[i]]["position"]:arch[indices[i]]["position"]+arch[indices[i]]["size"]]=0.0
+            for j in indices[i]:
 
-            c_mask[i][arch[indices[i]]["position"]:arch[indices[i]]["position"]+arch[indices[i]]["size"]]=1
+                c_input[i][arch[j]["position"]:arch[j]["position"]+arch[j]["size"]]=0.0
+
+                c_mask[i][arch[j]["position"]:arch[j]["position"]+arch[j]["size"]]=1
 
         return c_input, c_mask

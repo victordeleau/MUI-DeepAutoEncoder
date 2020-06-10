@@ -16,6 +16,8 @@ class MixedVariableDataset(Dataset):
 
         self.pd_dataset = pd_dataset
 
+        self.variable_names = pd_dataset.columns
+
         self.nb_predictor = len(self.pd_dataset.columns)
 
         self.nb_observation = len(self.pd_dataset)
@@ -36,7 +38,7 @@ class MixedVariableDataset(Dataset):
                 self.arch[-1]["type"] = "regression"
                 print("R1 ", end="")
 
-            else: 
+            else:                
                 self.arch[-1]["size"] = self.pd_dataset[column].nunique()
                 self.arch[-1]["type"] = "classification"
                 print("C%d " %self.arch[-1]["size"], end="")

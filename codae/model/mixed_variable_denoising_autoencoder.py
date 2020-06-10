@@ -299,7 +299,7 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
         """
 
         c_input = input_data.clone()
-        c_mask = torch.empty(
+        c_mask = torch.zeros(
             input_data.size(),
             device=device)
 
@@ -308,6 +308,6 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
             # for each corrupted embedding
             c_input[i][arch[indices[i]]["position"]:arch[indices[i]]["position"]+arch[indices[i]]["size"]]=0.0
 
-        c_mask = ( c_input == 0 )
+            c_mask[i][arch[indices[i]]["position"]:arch[indices[i]]["position"]+arch[indices[i]]["size"]]=1
 
         return c_input, c_mask

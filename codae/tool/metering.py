@@ -1,6 +1,6 @@
 # tools related to mesuring stuff
 
-import os
+import os, sys
 import math
 import json
 import operator
@@ -275,3 +275,71 @@ def get_ranking_loss(prediction, dataset, corrupt_embedding, idx, sub_index):
         ranking_loss += rank/len(sub_index)
 
     return ranking_loss/len(idx)
+
+
+
+class CombinedCriterion:
+    """
+    Combine multiple losses together according
+    to the architecture of the input.
+    """
+
+    def __init__(self, arch):
+
+        self.arch = arch
+
+        self.MSE_criterion = torch.nn.MSELoss(reduction="sum")
+        self.CE_criterion = torch.nn.CrossEntropyLoss(reduction="sum")
+
+
+    def __call__(self, x, y):
+        """
+        Default method => compute the loss
+        input
+            x : torch.tensor
+            y : torch.Tensor
+        """
+
+        return self._compute_loss(x, y)
+
+
+    def _compute_loss(self, x, y):
+        """
+        Compute the loss of each variable and return a list.
+        input 
+            x : torch.Tensor
+            y : torch.Tensor
+        output
+            list of loss for each variable
+        """
+
+        loss = [0 for x in range(len(self.arch))]
+
+        for i, variable in enumerate(self.arch):
+
+            if variable["type"] == "regression":
+
+                loss[i] += torch.sqrt(self.MSE_criterion(
+                    input=x[:,variable["position"]:variable["position"]+variable["size"]],
+                    target=y[:,variable["position"]:variable["position"]+variable["size"]]))
+
+            else: # is classification
+
+                loss[i] += self.CE_criterion(
+                    input=x[:,variable["position"]:variable["position"]+variable["size"]],
+                    target=y[:,variable["position"]:variable["position"]+variable["size"]].max(dim=1)[1])
+
+        return loss
+
+    
+    def full_loss(self, x, y):
+        """
+        Compute a full loss.
+        input 
+            x : torch.Tensor
+            y : torch.Tensor
+        output
+            A single loss as a float
+        """
+
+        return sum(self._compute_loss(x, y))/len(self.arch)

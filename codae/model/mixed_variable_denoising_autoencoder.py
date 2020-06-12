@@ -7,15 +7,17 @@ import numpy as np
 
 class MixedVariableDenoisingAutoencoder(torch.nn.Module):
     
-    def __init__(self, input_arch, io_size, z_size, nb_input_layer=2, nb_output_layer=2, steep_layer_size=True, activation=torch.nn.ReLU):
+    def __init__(self, arch, io_size, z_size, device, nb_input_layer=2, nb_output_layer=2, steep_layer_size=True, activation=torch.nn.ReLU):
         """input
-            input_arch : dict
+            arch : dict
                 list of dict {"name": name, "type": "regression"/"classification", "size": int, "lambda": 1, "position": int}
             io_size : int
                 size of the input layer
             z_size : int
                 size of the embedding layer
                 default : 128
+            device : torch.device
+                device where data is kept
             nb_input_layer : int
                 number of layer for the encoder
                 default : 2
@@ -30,9 +32,10 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
 
         super(MixedVariableDenoisingAutoencoder, self).__init__()
 
-        self.input_arch = input_arch
+        self.arch = arch
         self.z_size = z_size
         self.io_size = io_size
+        self.device = device
         
         self.nb_input_layer = nb_input_layer
         self.nb_output_layer = nb_output_layer
@@ -210,12 +213,12 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
         mask = torch.Tensor(output_data.size())
 
         # compute mask
-        for variable in self.input_arch:
+        for variable in self.arch:
             if output_data[variable["position"]:variable["size"]].mean() == 0:
                 mask[variable["position"]:variable["size"]] = True
 
         loss, nb = 0, 0
-        for variable in self.input_arch:
+        for variable in self.arch:
 
             if output_data[variable["position"]:variable["size"]].mean() == 0:
                 continue
@@ -252,16 +255,14 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
         return self
 
 
-    def corrupt(self, input_data, device, indices, arch, corruption_type="zero_continuous"):
+    def corrupt(self, input_data, mask, corruption_type="zero_continuous"):
         """
         corrupt input_data using requested corruption type
         input
-            input_data : torch.Tensor
+            input_data : torch.Tensor(io_size X batch_size)
                 the piece of data to corrupt
-            indices : list(list(int))
-                list of embedding index to corrupt
-            arch : dict
-                architecture of the input (regression/classification/offset/etc)
+            mask : torch.Tensor(io_size X batch_size)
+                boolean mask
             corruption_type : str
                 type of corruption to apply
         output
@@ -274,23 +275,19 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
         if corruption_type == "zero_continuous":
             return self._corrupt_zero_continuous(
                 input_data=input_data,
-                device=device,
-                indices=indices,
-                arch=arch)
+                mask=mask)
         else:
             raise Exception("Error: invalid corruption type requested (zero_continuous).")
 
 
-    def _corrupt_zero_continuous(self, input_data, device, indices, arch):
+    def _corrupt_zero_continuous(self, input_data, mask):
         """
         randomly set one of the input embeddings and set all values to zero.
         input
             input_data : torch.Tensor
                 the piece of data to corrupt
-            indices : list(list(int))
-                list of embedding index to corrupt
-            arch : dict
-                architecture of the input (regression/classification/offset/etc)
+            mask : torch.Tensor(io_size X batch_size)
+                boolean mask
         output
             c_input : torch.Tensor
                 the corrupted input data
@@ -298,18 +295,4 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
                 indices of corrupted categories
         """
 
-        c_input = input_data.clone()
-        c_mask = torch.zeros(
-            input_data.size(),
-            device=device)
-
-        for i in range( input_data.size()[0] ): # for batch size 
-
-            # for each corrupted embedding
-            for j in indices[i]:
-
-                c_input[i][arch[j]["position"]:arch[j]["position"]+arch[j]["size"]]=0.0
-
-                c_mask[i][arch[j]["position"]:arch[j]["position"]+arch[j]["size"]]=1
-
-        return c_input, c_mask
+        return input_data.clone() * mask

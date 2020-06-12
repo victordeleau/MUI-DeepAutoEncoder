@@ -82,27 +82,93 @@ def load_dataset_of_embeddings(embedding_path, config, cache_dir="tmp/"):
     return dataset
 
 
-def get_augmentation(nb_observation, nb_predictor, k_max):
+class Corrupter:
     """
-    Get corruption indices from 1 up to k_max < nb_predictor indices per observation.
-    input
-        nb_observation : int
-        nb_predictor : int
-        k_max : int
+    Create, handle, and keep track of corruption masks.
     """
 
-    if (k_max < 0) | (k_max > nb_predictor-1):
-        raise Exception("Invalid k_max number. k_max > 0 && k_max < nb_predictor - 1")
+    def __init__(self, nb_observation, arch, k_max, device):
+        """
+        input
+            nb_observation : int
+            arch : int
+            k_max : int
+            device : torch.device
+        """
 
-    indices = [i for i in range(nb_predictor)]
-    l = []
+        self.nb_observation = nb_observation
+        self.arch = arch
+        self.k_max = k_max
+        self.device = device
 
-    # get binomial coefficent indexes
-    for k in range(1, k_max+1):
-        l += list(itertools.combinations(indices, k))
+        if (k_max < 0) | (k_max > len(self.arch)-1):
+            raise Exception("Invalid k_max number. k_max > 0 && k_max < nb_predictor - 1")
 
-    output = []
-    for i in range(nb_observation):
-        output.append( random.sample(l, len(l)) )
+        self.io_size = sum([v["size"] for v in self.arch])
+        self.nb_predictor = len(self.arch)
 
-    return output
+        # build binary mask tensors ############################################
+
+        # get binomial coefficent indexes
+        indices = [i for i in range(self.nb_predictor)]
+        binomial_coef_indices = []
+        self.nb_corruption_per_k = [0 for x in range(0, k_max)]
+        for k in range(0, k_max):
+            binomial_coef_indices.append( torch.LongTensor(list(itertools.combinations(indices, k+1))) )
+            self.nb_corruption_per_k[k] = len(binomial_coef_indices[-1])
+        self.nb_run = sum(self.nb_corruption_per_k)
+        #print(self.nb_corruption_per_k)
+
+        # dictionnary of stacked binary masks tensors
+        binary_masks = []
+        for k, bci in enumerate(binomial_coef_indices): # for k missing variable
+            for subset in bci: # for subset of indices of size k
+                tmp = torch.ones((self.io_size))
+                for idx in subset: # for each corrupted variable
+                    tmp[self.arch[idx]["position"]:self.arch[idx]["position"]+self.arch[idx]["size"]] = 0
+                binary_masks.append(tmp)
+        self.binary_masks = torch.stack(binary_masks)
+
+        # build randomized index of mask to use per observation ################
+
+        # nb missing variable to pick at each augmentation run
+        self.nb_missing_per_run = [0 for x in range(self.nb_run)]
+        j = 0
+        for k in range(k_max):
+            for i in range(self.nb_corruption_per_k[k]):
+                self.nb_missing_per_run[j] = k+1
+                j += 1
+
+        # shuffle nb of missing variable to pick at each run per observation
+        mask_to_use = []
+        self.corrupted_index = [x for x in range(self.nb_run)]
+        for i in range(nb_observation):
+            mask_to_use.append( torch.LongTensor(random.sample(self.corrupted_index, self.nb_run)) )
+        self.mask_to_use = torch.stack(mask_to_use)
+
+
+
+    def get_masks(self, batch_indices, run):
+        """
+        Return list of [k_max] corruption masks as boolean tensors.
+        input
+            batch_indices : list(int)
+                list of observation index
+            run : int
+                current augmentation run
+        output
+            masks : list(torch.Tensor)
+                list of binary mask tensor for each [nb_missing_variable]
+        """
+
+        masks = [torch.zeros((len(batch_indices), self.io_size), device=self.device) for x in range(self.k_max)]
+
+        for i, idx in enumerate(batch_indices): # for each observation in batch
+
+            # get nb missing variable
+            k = self.nb_missing_per_run[self.mask_to_use[idx][run]]-1
+
+            # extract masks
+            masks[k][i, :] = self.binary_masks[self.mask_to_use[idx][run]]
+
+        return masks, torch.sum(torch.stack(masks, dim=0), dim=0)

@@ -14,21 +14,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import dataset, DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 import torch
 
 from codae.dataset import MixedVariableDataset
 from codae.model import MixedVariableDenoisingAutoencoder
 from codae.tool import set_logging, get_date
-from codae.tool import CombinedCriterion
-from codae.tool import collate_embedding, get_augmentation
+from codae.tool import CombinedCriterion, LossManager
+from codae.tool import collate_embedding, Corrupter
 
 
 def parse():
 
     parser = argparse.ArgumentParser(
-        description='Train DAE on Abalone dataset.')
+        description='Train DAE on Abalone data.')
 
     parser.add_argument('--dataset_path', type=str, required=True)
 
@@ -39,10 +39,10 @@ def parse():
     parser.add_argument('--debug', type=bool, default=False)
 
     # train with missing variables from 1 to m-1
-    parser.add_argument('--training_robustness', type=int, default=1)
+    parser.add_argument('--nb_missing', type=int, default=1)
 
     # infer with missing variables from 1 to m-1
-    parser.add_argument('--inference_robustness', type=int, default=1)
+    #parser.add_argument('--inference_robustness', type=int, default=1)
 
     return parser.parse_args()
 
@@ -52,7 +52,7 @@ if __name__=="__main__":
     ############################################################################
     # configuration ############################################################
 
-    print("===== Train DAE on Abalone dataset =====")
+    print("===== Train DAE on Abalone data =====")
 
     args = parse()
 
@@ -67,36 +67,47 @@ if __name__=="__main__":
         except yaml.YAMLError as e:
             raise e
 
+    use_gpu = torch.cuda.is_available()
+    if use_gpu:
+        args.log.info("CUDA available, loading GPU device")
+    else:
+        args.log.info("No CUDA device available, using CPU") 
+        
+    device = torch.device("cuda:0" if use_gpu else "cpu")
+
 
     ############################################################################
-    # dataset preprocessing ####################################################
+    # data preprocessing ####################################################
 
-    # load dataset
-    data_path = os.path.join(args.dataset_path, "abalone.data")
-    with open(data_path, 'r') as f:
+    # load data
+    dataset_path = os.path.join(args.dataset_path, "abalone.data")
+    with open(dataset_path, 'r') as f:
         dataset = pd.read_csv(f, sep=",")
 
     # min-max normalization
     normalizer = MinMaxScaler()
     dataset.iloc[:, 1:] = normalizer.fit_transform(dataset.iloc[:, 1:])
 
-    # instantiate dataset
+    # instantiate data
     dataset = MixedVariableDataset(dataset)
 
     indices = list(range(dataset.nb_observation))
 
-    nb_train_observation = math.floor(
+    nb_train = math.floor(
         dataset.nb_observation * config["DATASET"]["SPLIT"][0])
-    nb_validation_observation = dataset.nb_observation - nb_train_observation
+    nb_validation = dataset.nb_observation - nb_train
 
-    # shuffle dataset
+    # shuffle data
     if config["DATASET"]["SHUFFLE"]:
         np.random.seed(config["SEED"])
         np.random.shuffle(indices)
 
-    # split dataset
-    train_indices = indices[:nb_train_observation]
-    validation_indices = indices[nb_train_observation:]
+    # split data
+    train_indices = indices[:nb_train]
+    validation_indices = indices[nb_train:]
+
+    nb_train_batch = nb_train / config["MODEL"]["BATCH_SIZE"]
+    nb_validation_batch = nb_validation / config["MODEL"]["BATCH_SIZE"]
 
     train_loader = DataLoader(
         dataset=dataset,
@@ -110,8 +121,12 @@ if __name__=="__main__":
         collate_fn=collate_embedding,
         sampler=SubsetRandomSampler(validation_indices))
 
-    # augment corrupted index 
-    augment_index = get_augmentation(nb_observation=dataset.nb_observation,nb_predictor=dataset.nb_predictor,k_max=args.training_robustness)
+    # augment corrupted indices
+    corrupter = Corrupter(
+        nb_observation=dataset.nb_observation,
+        arch=dataset.arch,
+        k_max=args.nb_missing,
+        device=device)
 
 
     ############################################################################
@@ -120,22 +135,15 @@ if __name__=="__main__":
     args.log.info("Initializing the model.")
 
     model = MixedVariableDenoisingAutoencoder(
-        input_arch=dataset.arch,
+        arch=dataset.arch,
         io_size=dataset.io_size,
         z_size=config["MODEL"]["Z_SIZE"],
+        device=device,
         nb_input_layer=config["MODEL"]["NB_INPUT_LAYER"],
         nb_output_layer=config["MODEL"]["NB_OUTPUT_LAYER"],
         steep_layer_size=config["MODEL"]["STEEP_LAYER_SIZE"]) 
 
     print(model)
-
-    use_gpu = torch.cuda.is_available()
-    if use_gpu:
-        args.log.info("CUDA available, loading GPU device")
-    else:
-        args.log.info("No CUDA device available, using CPU") 
-        
-    device = torch.device("cuda:0" if use_gpu else "cpu")
     model.to(device)
     dataset.to(device)
 
@@ -145,23 +153,20 @@ if __name__=="__main__":
         weight_decay=config["MODEL"]["WEIGHT_DECAY"])
 
     # mix regression + classification loss
-    combined_criterion = CombinedCriterion(dataset.arch)
+    combined_criterion = CombinedCriterion(
+        arch=dataset.arch,
+        k_max=args.nb_missing,
+        device=torch.device(device))
 
-    metric_log = {} # display/save information about the model & dataset
+    loss_manager = LossManager(device=torch.device(device))
+    loss_manager.add_book("ftl", (args.nb_missing, dataset.nb_predictor))
+    loss_manager.add_book("ptl", (args.nb_missing, dataset.nb_predictor))
+    loss_manager.add_book("fvl", (args.nb_missing, dataset.nb_predictor))
+    loss_manager.add_book("pvl", (args.nb_missing, dataset.nb_predictor))
+
 
     ############################################################################
     # training #################################################################
-
-    nb_train_batch = len(train_indices) / config["MODEL"]["BATCH_SIZE"]
-    nb_validation_batch = len(validation_indices) / config["MODEL"]["BATCH_SIZE"]
-
-    metric_log["full_training_loss"] = []
-    metric_log["full_validation_loss"] = []
-    metric_log["partial_training_loss"] = {}
-    metric_log["partial_validation_loss"] = {}
-    for variable_name in dataset.variable_names:
-        metric_log["partial_training_loss"][variable_name] = []
-        metric_log["partial_validation_loss"][variable_name] = []
 
     for epoch in range( config["MODEL"]["EPOCH"] ):
 
@@ -169,99 +174,78 @@ if __name__=="__main__":
 
         # training #############################################################
 
-        full_training_loss, full_validation_loss = 0, 0
-        partial_training_loss = [0 for i in range(dataset.nb_predictor)]
-        partial_validation_loss = [0 for i in range(dataset.nb_predictor)]
+        for run in range(corrupter.nb_run):
 
-        for run in range(len(augment_index[0])):
-
-            for c, (input_data, idx) in enumerate(train_loader):
+            for c, (input_data, batch_indices) in enumerate(train_loader):
 
                 print("AUGMENTATION RUN %2d/%2d BATCH NUMBER = %5d/%5d" %(
-                    run+1, len(augment_index[0]), c, nb_train_batch), end="\r")
+                    run+1, corrupter.nb_run, c, nb_train_batch), end="\r")
 
-                corrupt_embedding = [ augment_index[i][run] for i in idx ]
+                masks, fmask = corrupter.get_masks(batch_indices, run)
                 
-                # corrupt input data using zero_continuous noise
-                c_input_data, c_mask = model.corrupt(
-                    input_data=input_data,
-                    device=torch.device(device),
-                    corruption_type="zero_continuous",
-                    indices=corrupt_embedding,
-                    arch=dataset.arch)
+                c_input_data = model.corrupt(input_data=input_data, mask=fmask)
 
                 # apply forward pass to corrupted input data
                 output_data = model( c_input_data )
 
                 # compute the global training loss
-                ftl = combined_criterion.full_loss(input_data, output_data)
-                full_training_loss += ftl.item()
+                ptl = combined_criterion(input_data, output_data, masks)
 
-                # backpropagate global training loss
+                loss_manager.get_book("ftl").add(ptl)
+                loss_manager.get_book("ptl").add(ptl)
+                
+                # backpropagate training loss
                 optimizer.zero_grad()
-                ftl.backward()
+                loss_manager.get_mean(ptl).backward()
                 optimizer.step()
 
-                ptl = combined_criterion(input_data*c_mask.float(),output_data*c_mask.float())
-                partial_training_loss = [a+b.item() for a, b in zip(partial_training_loss, ptl)]
 
-        full_training_loss /= nb_train_batch*dataset.nb_predictor
-        partial_training_loss=[x/len(train_indices) for x in partial_training_loss]
+        loss_manager.get_book("ftl").sum().divide(dataset.nb_predictor*nb_train)
+        loss_manager.log_book("ftl")
+        loss_manager.log_book("ptl")
+        loss_manager.get_book("ftl").purge()
+        loss_manager.get_book("ptl").purge()
 
-        args.log.info("TRAINING FULL RMSE                                 = %7f" %full_training_loss)
-        metric_log["full_training_loss"].append( full_training_loss )
+        args.log.info("TRAINING   FULL RMSE                                = %7f" %loss_manager.get_log("ftl")[-1])
 
         # denormalize loss
-        partial_training_loss[1:] = normalizer.inverse_transform(np.array([partial_training_loss[1:]]))[0]
-
-        for i, name in enumerate(dataset.variable_names):
-            args.log.info("TRAINING PARTIAL RMSE :     %s     = %7f" %(name.ljust(18, " "), partial_training_loss[i]))
-            metric_log["partial_training_loss"][name].append( partial_training_loss[i] )
+        # ptl[1:] = normalizer.inverse_transform(np.array([ptl[1:]]))[0]
 
         # validation ###########################################################
 
         # corrupt each of the possibly missing input embeddings
-        for run in range(len(augment_index[0])):
+        for run in range(corrupter.nb_run):
 
             # go over validation data ##########################################
-            for c, (input_data, idx) in enumerate(validation_loader):
+            for c, (input, indices) in enumerate(validation_loader):
 
                 print("AUGMENTATION RUN %2d/%2d BATCH NUMBER = %5d/%5d" %(
-                    run+1, len(augment_index[0]), c, nb_validation_batch), end="\r")
+                    run+1, corrupter.nb_run, c, nb_validation_batch), end="\r")
 
-                corrupt_embedding = [ augment_index[i][run] for i in idx ]
+                masks, fmask = corrupter.get_masks(batch_indices, run)
 
-                # corrupt input data using zero_continuous noise
-                c_input_data, c_mask = model.corrupt(
-                    input_data=input_data,
-                    device=torch.device(device),
-                    corruption_type="zero_continuous",
-                    indices=corrupt_embedding,
-                    arch=dataset.arch)
+                c_input_data = model.corrupt(input_data=input_data, mask=fmask)
 
                 # apply forward pass to corrupted input data
-                output_data = model( c_input_data )
+                output = model( c_input_data )
 
                 # compute the global validation loss
-                fvl = combined_criterion.full_loss(input_data, output_data)
-                full_validation_loss += fvl.item()
+                fvl = combined_criterion(input_data, output_data, masks)
 
-                # compute the partial validation loss
-                pvl = combined_criterion(input_data*c_mask.float(),output_data*c_mask.float())
-                partial_validation_loss = [a+b.item() for a, b in zip(partial_validation_loss, pvl)]
+                loss_manager.get_book("fvl").add(fvl)
+                loss_manager.get_book("pvl").add(fvl)
+                
 
-        full_validation_loss /= nb_validation_batch*dataset.nb_predictor
-        partial_validation_loss=[x/len(validation_indices) for x in partial_validation_loss]
+        loss_manager.get_book("fvl").sum().divide(dataset.nb_predictor*nb_train)
+        loss_manager.log_book("fvl")
+        loss_manager.log_book("pvl")
+        loss_manager.get_book("fvl").purge()
+        loss_manager.get_book("pvl").purge()
 
-        args.log.info("VALIDATION FULL RMSE                               = %7f" %full_validation_loss)
-        metric_log["full_validation_loss"].append( full_validation_loss )
+        args.log.info("VALIDATION FULL RMSE                                = %7f" %loss_manager.get_log("fvl")[-1])
 
         # denormalize loss
-        partial_validation_loss[1:] = normalizer.inverse_transform(np.array([partial_validation_loss[1:]]))[0]
-
-        for i, name in enumerate(dataset.variable_names):
-            args.log.info("VALIDATION PARTIAL RMSE :   %s       = %7f" %(name.ljust(16, " "), partial_validation_loss[i]))
-            metric_log["partial_validation_loss"][name].append( partial_validation_loss[i] )
+        # pvl[1:] = normalizer.inverse_transform(np.array([pvl[1:]]))[0]
 
     args.log.info("TRAINING HAS ENDED.")
 
@@ -269,9 +253,10 @@ if __name__=="__main__":
     ############################################################################
     # log/plot #################################################################
 
+    """
     # ensure output dir exists
     now = get_date()
-    d = os.path.join(args.output_path,now+"_train_"+config["DATASET"]["NAME"])
+    d = os.path.join(args.output_path,now+"_train_"+config["data"]["NAME"])
     if not os.path.exists(d):
         os.makedirs(d)
 
@@ -279,7 +264,7 @@ if __name__=="__main__":
 
     # plot partial RMSE ########################################################
 
-    for i, name in enumerate(dataset.variable_names):
+    for i, name in enumerate(data.variable_names):
 
         plt.plot(epoch_axis, metric_log["partial_training_loss"][name],
             label="Partial training RMSE")
@@ -314,3 +299,4 @@ if __name__=="__main__":
         json.dump(metric_log, f)
 
     args.log.info("Data saved in directory %s" %d)
+    """

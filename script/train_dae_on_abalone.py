@@ -88,10 +88,10 @@ if __name__=="__main__":
     dataset = MixedVariableDataset(dataset)
 
     # min-max normalization
-    normalizer = Normalizer().fit(
+    normalizer = Normalizer(device=device).fit(
         data=dataset.data,
         mask=dataset.type_mask)
-    dataset.data = normalizer.normalize(dataset.data)
+    dataset.data = normalizer.do(dataset.data)
 
     indices = list(range(dataset.nb_observation))
 
@@ -160,11 +160,11 @@ if __name__=="__main__":
         k_max=args.nb_missing,
         device=torch.device(device))
 
-    loss_manager = LossManager(device=torch.device(device))
-    loss_manager.add_book("ftl", (args.nb_missing, dataset.nb_predictor))
-    loss_manager.add_book("ptl", (args.nb_missing, dataset.nb_predictor))
-    loss_manager.add_book("fvl", (args.nb_missing, dataset.nb_predictor))
-    loss_manager.add_book("pvl", (args.nb_missing, dataset.nb_predictor))
+    lm = LossManager(device=torch.device(device))
+    lm.add_book("ftl", (args.nb_missing, dataset.nb_predictor))
+    lm.add_book("ptl", (args.nb_missing, dataset.nb_predictor))
+    lm.add_book("fvl", (args.nb_missing, dataset.nb_predictor))
+    lm.add_book("pvl", (args.nb_missing, dataset.nb_predictor))
 
 
     ############################################################################
@@ -193,25 +193,32 @@ if __name__=="__main__":
                 # compute the global training loss
                 ptl = combined_criterion(input_data, output_data, masks)
 
-                loss_manager.get_book("ftl").add(ptl.numpy())
-                loss_manager.get_book("ptl").add(ptl.numpy())
-                #ptl[1:] = normalizer.inverse_transform([ptl[1:]])[0]
+                #lm.get_book("ftl").add(ptl)
+                lm.get_book("ptl").add(ptl)
                 
                 # backpropagate training loss
                 optimizer.zero_grad()
-                loss_manager.get_mean(ptl).backward()
+                lm.get_mean(ptl).backward()
                 optimizer.step()
 
 
-        loss_manager.get_book("ftl").sum().divide(dataset.nb_predictor*nb_train)
-        loss_manager.log_book("ftl")
-        loss_manager.log_book("ptl")
-        loss_manager.get_book("ftl").purge()
-        loss_manager.get_book("ptl").purge()
+        lm.get_book("ptl").loss = normalizer.undo(
+            lm.get_book("ptl").loss, loss=True)
 
-        args.log.info("TRAINING   FULL RMSE                                = %7f" %loss_manager.get_log("ftl")[-1])
+        lm.copy_book(origin="ptl", destination="ftl")
+        lm.get_book("ftl").sum().divide(dataset.nb_predictor*nb_train)
 
-        # denormalize loss
+        # save losses for epoch
+        lm.log_book("ftl")
+        lm.log_book("ptl")
+
+        # erase loss buffer
+        lm.get_book("ftl").purge()
+        lm.get_book("ptl").purge()
+
+        args.log.info("TRAINING   FULL RMSE                                = %7f" %lm.get_log("ftl")[-1])
+
+        # undo loss
         # ptl[1:] = normalizer.inverse_transform(np.array([ptl[1:]]))[0]
 
         # validation ###########################################################
@@ -235,19 +242,19 @@ if __name__=="__main__":
                 # compute the global validation loss
                 fvl = combined_criterion(input_data, output_data, masks)
 
-                loss_manager.get_book("fvl").add(fvl)
-                loss_manager.get_book("pvl").add(fvl)
+                lm.get_book("fvl").add(fvl)
+                lm.get_book("pvl").add(fvl)
                 
 
-        loss_manager.get_book("fvl").sum().divide(dataset.nb_predictor*nb_train)
-        loss_manager.log_book("fvl")
-        loss_manager.log_book("pvl")
-        loss_manager.get_book("fvl").purge()
-        loss_manager.get_book("pvl").purge()
+        lm.get_book("fvl").sum().divide(dataset.nb_predictor*nb_train)
+        lm.log_book("fvl")
+        lm.log_book("pvl")
+        lm.get_book("fvl").purge()
+        lm.get_book("pvl").purge()
 
-        args.log.info("VALIDATION FULL RMSE                                = %7f" %loss_manager.get_log("fvl")[-1])
+        args.log.info("VALIDATION FULL RMSE                                = %7f" %lm.get_log("fvl")[-1])
 
-        # denormalize loss
+        # undo loss
         # pvl[1:] = normalizer.inverse_transform(np.array([pvl[1:]]))[0]
 
     args.log.info("TRAINING HAS ENDED.")

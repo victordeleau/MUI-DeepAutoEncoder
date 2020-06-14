@@ -15,7 +15,7 @@ from codae.dataset import ConcatenatedEmbeddingDataset
 
 class Normalizer:
 
-    def __init__(self, normalization_type="min_max"):
+    def __init__(self, device, normalization_type="min_max"):
         """
         input
             normalization_type : str
@@ -23,6 +23,7 @@ class Normalizer:
         """
 
         self.normalization_type = normalization_type
+        self.device = device
 
         self.min = None
         self.max = None
@@ -38,68 +39,86 @@ class Normalizer:
                 data to normalize
             mask : (np.ndarray/torch.Tensor)
                 optionnal mask to apply (to avoid normalizing nominal variables for ex)
-        """   
+        """
 
-        if self.normalization_type == "min_max":
+        if mask == None:
+            self.mask = torch.ones((self.data.size()[0])).to(self.device)
+        else:
+            self.mask = mask
 
-            if isinstance(data, np.ndarray):
+        # build I/O variables & masks ##########################################
 
-                if mask == None:
-                    self.mask = torch.ones((self.data.shape()[0]))
-                else:
-                    self.mask = mask
+        self.min = data.min(0, keepdim=True)[0] * self.mask
+        self.max = data.max(0, keepdim=True)[0] * self.mask
+        self.scale = self.max - self.min
+        self.scale[self.scale == 0] = 1
 
-                self.min = data.min(0)[0] * self.mask
-                self.max = data.max(0)[0] * self.mask
-                self.scale = self.max - self.min
-                self.scale[self.scale == 0] = 1
+        # build loss variables & masks #########################################
 
-            elif isinstance(data, torch.Tensor):
-
-                if mask == None:
-                    self.mask = torch.ones((self.data.size()[0]))
-                else:
-                    self.mask = mask
-
-                self.min = data.min(0, keepdim=True)[0] * self.mask
-                self.max = data.max(0, keepdim=True)[0] * self.mask
-                self.scale = self.max - self.min
-                self.scale[self.scale == 0] = 1
-
+        mask_for_loss, min_for_loss, max_for_loss = [], [], []
+        b, c = 1, 0
+        for i in range(len(self.min[0])):
+            if self.mask[i] == 0:
+                if b == 1:
+                    b = 0
+                    mask_for_loss.append(b)
+                    min_for_loss.append(0)
+                    max_for_loss.append(0)      
             else:
-                raise Exception("Error: dataset type not suppored (np.Array/torchTensor).")
+                b = 1
+                c += 1
+                mask_for_loss.append(b)
+                min_for_loss.append(self.min[0, i])
+                max_for_loss.append(self.max[0, i])
+
+        self.mask_for_loss = torch.Tensor([mask_for_loss]).to(self.device)
+        self.min_for_loss = torch.Tensor([min_for_loss]).to(self.device)
+        self.max_for_loss = torch.Tensor([max_for_loss]).to(self.device)
+
+        self.scale_for_loss = self.max_for_loss - self.min_for_loss
+        self.scale_for_loss[self.scale_for_loss == 0] = 1
 
         self.is_fitted = True
 
         return self
 
     
-    def normalize(self, data):
+    def do(self, data, loss=False):
         """
         normalize data using previously fitted model
         input 
             data : (np.ndarray/torch.Tensor)
                 data to normalize
+            loss : bool
+                use loss normalizer or not
         """
 
         if not self.is_fitted:
             raise Exception("Error: normalizer is not fitted.")
 
-        return (data - self.min) / self.scale
+        if not loss:
+            return (data - self.min) / self.scale
+
+        return (data - self.min_for_loss) / self.scale_for_loss
         
 
-    def denormalize(self, data):
+    def undo(self, data, loss=False):
         """
         denormalize data using previously fitted model
         input 
             data : (np.ndarray/torch.Tensor)
                 data to denormalize
+            loss : bool
+                use loss normalizer or not
         """
 
         if not self.is_fitted:
             raise Exception("Error: normalizer is not fitted.")
 
-        return ((data * self.scale) + self.min)
+        if not loss:
+            return (data * self.scale) + self.min
+
+        return (data * self.scale_for_loss) + self.min_for_loss
 
 
 

@@ -226,6 +226,13 @@ class LossManager:
         return self.book[name]
 
 
+    def copy_cook(self, origin, destination):
+
+        self.book[destination] = self.book[origin]
+
+        return self
+
+
     def log_book(self, name):
         """
         Store book as a numpy array of losses.

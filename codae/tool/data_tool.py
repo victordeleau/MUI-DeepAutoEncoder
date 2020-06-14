@@ -13,6 +13,97 @@ import numpy as np
 from codae.dataset import ConcatenatedEmbeddingDataset
 
 
+class Normalizer:
+
+    def __init__(self, normalization_type="min_max"):
+        """
+        input
+            normalization_type : str
+                how to normalize (min_max/...)
+        """
+
+        self.normalization_type = normalization_type
+
+        self.min = None
+        self.max = None
+        self.scale = None
+        self.is_fitted = False
+
+
+    def fit(self, data, mask=None):
+        """
+        fit normalization model to data
+        input
+            data : (np.ndarray/torch.Tensor)
+                data to normalize
+            mask : (np.ndarray/torch.Tensor)
+                optionnal mask to apply (to avoid normalizing nominal variables for ex)
+        """   
+
+        if self.normalization_type == "min_max":
+
+            if isinstance(data, np.ndarray):
+
+                if mask == None:
+                    self.mask = torch.ones((self.data.shape()[0]))
+                else:
+                    self.mask = mask
+
+                self.min = data.min(0)[0] * self.mask
+                self.max = data.max(0)[0] * self.mask
+                self.scale = self.max - self.min
+                self.scale[self.scale == 0] = 1
+
+            elif isinstance(data, torch.Tensor):
+
+                if mask == None:
+                    self.mask = torch.ones((self.data.size()[0]))
+                else:
+                    self.mask = mask
+
+                self.min = data.min(0, keepdim=True)[0] * self.mask
+                self.max = data.max(0, keepdim=True)[0] * self.mask
+                self.scale = self.max - self.min
+                self.scale[self.scale == 0] = 1
+
+            else:
+                raise Exception("Error: dataset type not suppored (np.Array/torchTensor).")
+
+        self.is_fitted = True
+
+        return self
+
+    
+    def normalize(self, data):
+        """
+        normalize data using previously fitted model
+        input 
+            data : (np.ndarray/torch.Tensor)
+                data to normalize
+        """
+
+        if not self.is_fitted:
+            raise Exception("Error: normalizer is not fitted.")
+
+        return (data - self.min) / self.scale
+        
+
+    def denormalize(self, data):
+        """
+        denormalize data using previously fitted model
+        input 
+            data : (np.ndarray/torch.Tensor)
+                data to denormalize
+        """
+
+        if not self.is_fitted:
+            raise Exception("Error: normalizer is not fitted.")
+
+        return ((data * self.scale) + self.min)
+
+
+
+
 def collate_embedding(batch):
     """
     unzip and merge list of torch.Tensor into single Tensor by stacking them

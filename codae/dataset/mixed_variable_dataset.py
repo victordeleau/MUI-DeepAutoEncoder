@@ -37,6 +37,7 @@ class MixedVariableDataset(Dataset):
                 self.arch[-1]["size"] = 1
                 self.arch[-1]["type"] = "regression"
                 print("R1 ", end="")
+                
 
             else:                
                 self.arch[-1]["size"] = self.pd_dataset[column].nunique()
@@ -45,10 +46,15 @@ class MixedVariableDataset(Dataset):
             
             self.arch[-1]["position"] = self.io_size
             self.io_size += self.arch[-1]["size"]
-            
+
+        self.type_mask = torch.zeros((self.io_size))
+        for i, variable in enumerate(self.arch):
+            if variable["type"] == "regression":
+                self.type_mask[variable["position"]:variable["position"]+variable["size"]] = 1
+
         # vectorize dataset
         self.map = {}
-        self.dataset = np.empty(shape=(self.nb_observation, self.io_size))
+        self.data = np.empty(shape=(self.nb_observation, self.io_size))
         for i in range(self.nb_observation):
             
             for variable in self.arch:
@@ -71,12 +77,12 @@ class MixedVariableDataset(Dataset):
                         label=int_label,
                         max=variable["size"])
 
-                    self.dataset[i][variable["position"]:variable["position"]+variable["size"]] = ohe_variable
+                    self.data[i][variable["position"]:variable["position"]+variable["size"]] = ohe_variable
 
                 else: # regression
-                    self.dataset[i][variable["position"]:variable["position"]+variable["size"]] = self.pd_dataset[variable["name"]][i]
+                    self.data[i][variable["position"]:variable["position"]+variable["size"]] = self.pd_dataset[variable["name"]][i]
 
-        self.dataset = torch.Tensor(self.dataset)
+        self.data = torch.Tensor(self.data)
 
 
     def __len__(self):
@@ -86,7 +92,7 @@ class MixedVariableDataset(Dataset):
 
     def __getitem__(self, idx):
 
-        return self.dataset[idx], idx
+        return self.data[idx], idx
 
 
     def _categorical_to_OHE(self, label, max):
@@ -116,7 +122,8 @@ class MixedVariableDataset(Dataset):
             device : torch.device
         """
 
-        self.dataset = self.dataset.to(device)
+        self.data = self.data.to(device)
+        self.type_mask = self.type_mask.to(device)
 
     
     def cosine_similarity(self, query, indices=None):

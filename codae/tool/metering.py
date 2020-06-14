@@ -147,20 +147,17 @@ class BookLoss:
 
             self.loss = torch.zeros((shape[0], shape[1]), device=self.device)
 
-
         def add(self, x):
 
             self.loss += x
 
             return self
 
-
         def mean(self):
 
             self.loss = torch.mean(self.loss)
 
             return self
-
 
         def divide(self, x):
             """
@@ -171,7 +168,6 @@ class BookLoss:
 
             return self
 
-
         def purge(self):
             """
             Set losses to zero.
@@ -180,7 +176,6 @@ class BookLoss:
             self.loss = torch.zeros((self.shape[0], self.shape[1]), device=self.device)
 
             return self
-
 
         def sum(self, dim=None):
             """
@@ -194,13 +189,9 @@ class BookLoss:
 
             return self
 
-        
         def get(self):
 
             return self.loss.clone().detach().cpu().numpy()
-
-
-
 
 
 class LossManager:
@@ -258,4 +249,3 @@ class LossManager:
     def get_mean(self, x):
 
         return torch.mean(torch.stack([i for j in x for i in j]))
-

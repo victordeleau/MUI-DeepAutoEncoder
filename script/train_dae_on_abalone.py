@@ -22,7 +22,7 @@ from codae.dataset import MixedVariableDataset
 from codae.model import MixedVariableDenoisingAutoencoder
 from codae.tool import set_logging, get_date
 from codae.tool import CombinedCriterion, LossManager
-from codae.tool import collate_embedding, Corrupter
+from codae.tool import collate_embedding, Corrupter, Normalizer
 
 
 def parse():
@@ -84,12 +84,14 @@ if __name__=="__main__":
     with open(dataset_path, 'r') as f:
         dataset = pd.read_csv(f, sep=",")
 
-    # min-max normalization
-    normalizer = MinMaxScaler()
-    dataset.iloc[:, 1:] = normalizer.fit_transform(dataset.iloc[:, 1:])
-
     # instantiate data
     dataset = MixedVariableDataset(dataset)
+
+    # min-max normalization
+    normalizer = Normalizer().fit(
+        data=dataset.data,
+        mask=dataset.type_mask)
+    dataset.data = normalizer.normalize(dataset.data)
 
     indices = list(range(dataset.nb_observation))
 
@@ -191,8 +193,9 @@ if __name__=="__main__":
                 # compute the global training loss
                 ptl = combined_criterion(input_data, output_data, masks)
 
-                loss_manager.get_book("ftl").add(ptl)
-                loss_manager.get_book("ptl").add(ptl)
+                loss_manager.get_book("ftl").add(ptl.numpy())
+                loss_manager.get_book("ptl").add(ptl.numpy())
+                #ptl[1:] = normalizer.inverse_transform([ptl[1:]])[0]
                 
                 # backpropagate training loss
                 optimizer.zero_grad()

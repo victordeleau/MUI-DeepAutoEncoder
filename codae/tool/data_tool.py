@@ -13,6 +13,36 @@ import numpy as np
 from codae.dataset import ConcatenatedEmbeddingDataset
 
 
+def get_mask_transformation(observation_mask, loss_mask):
+    """
+    Create a boolean transformation matrix T to go from an observation mask matrix to a loss mask matrix.
+    input
+        observation_mask : list(bool)
+        loss_mask : list(bool)
+    output
+        T : torch.Tensor((len(observation_mask), len(loss_mask)))
+    """
+
+    T = torch.zeros((len(observation_mask), len(loss_mask)))
+
+    b = True
+    c = 0
+
+    for i in range(len(observation_mask)):
+        if observation_mask[i] == 1:
+            if not b:
+                b = True
+            T[i, c] = 1
+            c += 1
+        else:
+            if b:
+                b = False
+                T[i, c] = 1
+                c += 1
+
+    return T
+
+
 class Normalizer:
 
     def __init__(self, device, normalization_type="min_max"):
@@ -28,6 +58,10 @@ class Normalizer:
         self.min = None
         self.max = None
         self.scale = None
+        self.min_for_loss = None
+        self.max_for_loss = None
+        self.scale_for_loss = None
+        
         self.is_fitted = False
 
 
@@ -48,8 +82,8 @@ class Normalizer:
 
         # build I/O variables & masks ##########################################
 
-        self.min = data.min(0, keepdim=True)[0] * self.mask
-        self.max = data.max(0, keepdim=True)[0] * self.mask
+        self.min = (data.min(0, keepdim=True)[0] * self.mask).cpu().numpy()
+        self.max = (data.max(0, keepdim=True)[0] * self.mask).cpu().numpy()
         self.scale = self.max - self.min
         self.scale[self.scale == 0] = 1
 
@@ -61,19 +95,19 @@ class Normalizer:
             if self.mask[i] == 0:
                 if b == 1:
                     b = 0
-                    mask_for_loss.append(b)
+                    mask_for_loss.append(0)
                     min_for_loss.append(0)
-                    max_for_loss.append(0)      
+                    max_for_loss.append(1)      
             else:
                 b = 1
                 c += 1
-                mask_for_loss.append(b)
+                mask_for_loss.append(1)
                 min_for_loss.append(self.min[0, i])
                 max_for_loss.append(self.max[0, i])
 
-        self.mask_for_loss = torch.Tensor([mask_for_loss]).to(self.device)
-        self.min_for_loss = torch.Tensor([min_for_loss]).to(self.device)
-        self.max_for_loss = torch.Tensor([max_for_loss]).to(self.device)
+        self.mask_for_loss = torch.Tensor(mask_for_loss).to(self.device)
+        self.min_for_loss = torch.Tensor(min_for_loss).to(self.device)
+        self.max_for_loss = torch.Tensor(max_for_loss).to(self.device)
 
         self.scale_for_loss = self.max_for_loss - self.min_for_loss
         self.scale_for_loss[self.scale_for_loss == 0] = 1
@@ -256,6 +290,15 @@ class Corrupter:
             mask_to_use.append( torch.LongTensor(random.sample(self.corrupted_index, self.nb_run)) )
         self.mask_to_use = torch.stack(mask_to_use)
 
+        # compute nb subset where any variable is seen given k
+        self.nb_subset_per_variable = []
+        for i in range(1, self.k_max+1):
+            k_subset = 1
+            for j in range(1, i):
+                k_subset *= (self.nb_predictor-j)/2
+            self.nb_subset_per_variable.append( k_subset )
+
+        #print(self.nb_subset_per_variable)
 
 
     def get_masks(self, batch_indices, run):

@@ -9,6 +9,8 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
+from codae.tool import get_mask_transformation
+
 
 """
     compute rmse between x and y
@@ -71,7 +73,7 @@ class CombinedCriterion:
     to the architecture of the input.
     """
 
-    def __init__(self, arch, k_max, device):
+    def __init__(self, arch, k_max, device, observation_mask):
 
         if k_max < 0 | k_max >= len(arch):
             raise Exception("Error: maximum number of corrupted index [k_max] must be (> 0) && (< len(arch)).")
@@ -80,82 +82,118 @@ class CombinedCriterion:
         self.k_max = k_max
         self.device = device
 
-        self.book = {}
+        self.observation_mask = observation_mask
+        self.io_size = len(self.observation_mask)
 
-        self.MSE_criterion = torch.nn.MSELoss(reduction="sum")
-        self.CE_criterion = torch.nn.CrossEntropyLoss(reduction="sum")
+        self.loss_mask = []
+        for i, variable in enumerate(arch):
+            if variable["type"] == "continuous":
+                self.loss_mask.append(1)
+            else:
+                self.loss_mask.append(0)
+
+        self.mask_transformation = get_mask_transformation(
+            observation_mask=self.observation_mask,
+            loss_mask=self.loss_mask).to(self.device).cpu().numpy()
+
+        self.MSE_criterion = torch.nn.MSELoss(reduction="none")
+        self.CE_criterion = torch.nn.CrossEntropyLoss(reduction="none")
 
 
-    def __call__(self, x, y, masks):
+    def __call__(self, x, y):
         """
         Default method => compute the loss
         input
             x : torch.tensor
             y : torch.Tensor
-            masks : list(torch.Tensor(io_size X batch_size))
-                list of binary masks tensors
         """
 
-        return self._compute_loss(x, y, masks)
+        return self._compute_loss(x, y)
 
 
-    def _compute_loss(self, x, y, masks):
+    def _compute_loss(self, x, y):
         """
         Compute the loss of each variable and return a list.
         input 
             x : torch.Tensor
             y : torch.Tensor
-            masks : list(torch.Tensor(io_size X batch_size))
-                list of binary masks tensors
         """
 
-        # row = variable, column = nb_corrupt_index
-        losses = torch.zeros((self.k_max, len(self.arch)), device=self.device)
-        ones = torch.ones((x.size()[1], x.size()[1]), device=self.device)
+        loss = torch.zeros((x.size()[0], len(self.arch)), device=self.device)        
 
+        eps = 1e-6
+
+        for j, variable in enumerate(self.arch): # for each input variable
+
+            if variable["type"] == "regression":
+
+                loss[:,j:j+1] += torch.sqrt(self.MSE_criterion(
+                        input=x[:,variable["position"]:variable["position"]+variable["size"]],
+                        target=y[:,variable["position"]:variable["position"]+variable["size"]]) + eps)
+
+            else: # is classification
+
+                loss[:,j] += self.CE_criterion(
+                    input=y[:,variable["position"]:variable["position"]+variable["size"]],
+                    target=x[:,variable["position"]:variable["position"]+variable["size"]].max(1)[1])
+
+        return loss
+        
+
+    ############################################################################
+    # loss masking #############################################################
+
+    def get_per_k(self, loss, masks):
+
+        losses_per_k = np.zeros((self.k_max, len(self.arch)))
+        
         for i, mask in enumerate(masks): # for each k number of missing variable
-            
-            m = mask.matmul(ones).type(torch.cuda.ByteTensor)
-            a = x * m
-            b = y * m
 
-            for j, variable in enumerate(self.arch): # for each input variable
+            m = np.matmul(mask.cpu().numpy(),np.ones((self.io_size,self.io_size)))
+            m[m > 1] = 1
+            losses_per_k[i, :] = np.sum( np.matmul(m, self.mask_transformation) * loss, axis=0)
 
-                if variable["type"] == "regression":
+        return losses_per_k
 
-                    losses[i,j:j+1] = torch.sqrt(self.MSE_criterion(
-                            input=a[:,variable["position"]:variable["position"]+variable["size"]],
-                            target=b[:,variable["position"]:variable["position"]+variable["size"]]))
 
-                else: # is classification
+    def get_partial(self, loss, mask):
 
-                    losses[i,j:j+1] = self.CE_criterion(
-                        input=a[:,variable["position"]:variable["position"]+variable["size"]],
-                        target=b[:,variable["position"]:variable["position"]+variable["size"]].max(1)[1])
-        #print(losses)
+        partial_loss = np.zeros((loss.shape[0], len(self.arch)))
 
-        return losses
+        #print(loss)
+        #print(mask)
+        
+        partial_loss = (1-np.matmul(mask.cpu().numpy(), self.mask_transformation)) * loss
+
+        #print(partial_loss)
+        #print()
+
+        return partial_loss
+
 
 
 class BookLoss:
 
-        def __init__(self, name, shape, device):
+        def __init__(self, name, shape, device, loss=None):
 
             self.name = name
             self.shape = shape
             self.device = device
 
-            self.loss = torch.zeros((shape[0], shape[1]), device=self.device)
+            if loss == None:
+                self.loss = np.zeros((shape[0], shape[1]))
+            else:
+                self.loss = loss
 
         def add(self, x):
 
-            self.loss += x
+            self.loss[:len(x)] += x
 
             return self
 
         def mean(self):
 
-            self.loss = torch.mean(self.loss)
+            self.loss = np.mean(self.loss)
 
             return self
 
@@ -173,7 +211,7 @@ class BookLoss:
             Set losses to zero.
             """
 
-            self.loss = torch.zeros((self.shape[0], self.shape[1]), device=self.device)
+            self.loss = np.zeros((self.shape[0], self.shape[1]))
 
             return self
 
@@ -183,15 +221,23 @@ class BookLoss:
             """
 
             if dim == None:
-                self.loss = torch.sum(self.loss)
+                self.loss = np.sum(self.loss)
             else:
-                self.loss = torch.sum(self.loss, dim=dim)
+                self.loss = np.sum(self.loss, axis=dim)
 
             return self
 
         def get(self):
 
-            return self.loss.clone().detach().cpu().numpy()
+            return self.loss
+
+        def copy(self):
+
+            return BookLoss(
+                name=self.name,
+                shape=self.shape,
+                device=self.device,
+                loss=self.loss)
 
 
 class LossManager:
@@ -226,9 +272,13 @@ class LossManager:
         return self.book[name]
 
 
-    def copy_cook(self, origin, destination):
+    def copy_book(self, origin, destination):
 
-        self.book[destination] = self.book[origin]
+        self.add_book(
+            name=destination,
+            shape=self.book[origin].shape)
+
+        self.book[destination].loss = self.book[origin].loss
 
         return self
 
@@ -255,4 +305,4 @@ class LossManager:
 
     def get_mean(self, x):
 
-        return torch.mean(torch.stack([i for j in x for i in j]))
+        return np.mean(x)        

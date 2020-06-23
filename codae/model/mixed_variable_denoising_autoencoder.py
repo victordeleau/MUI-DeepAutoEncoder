@@ -46,22 +46,27 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
         output_layer_increment = 0
         if not self.steep_layer_size: # set layers steepiness
             delta = self.io_size - self.z_size
-            input_layer_increment = math.floor( delta / self.nb_input_layer )
-            output_layer_increment = math.floor( delta / self.nb_output_layer )
+            input_layer_increment = math.ceil( delta / self.nb_input_layer )
+            output_layer_increment = math.ceil( delta / self.nb_output_layer )
 
         ########################################################################
         # define encoder #######################################################
 
         input_layer = []
-        for i in range(nb_input_layer-1):
+        for i in range(nb_input_layer):
 
             if self.steep_layer_size:
-                input_layer.append( torch.nn.Linear(io_size, io_size) )
-                input_layer.append( activation(True) )
+                if i == nb_input_layer-1:
+                    input_layer.append( torch.nn.Linear(io_size, z_size) )
+                    input_layer.append( activation(True) )
+                else:
+                    input_layer.append( torch.nn.Linear(io_size, io_size) )
+                    input_layer.append( activation(True) )
 
             else:
-                next_layer_input_size = io_size-(i*input_layer_increment)
-                next_layer_output_size = io_size-((i+1)*input_layer_increment)
+                next_layer_input_size = max(io_size-(i*input_layer_increment), z_size)
+
+                next_layer_output_size = max(io_size-((i+1)*input_layer_increment), z_size)
 
                 input_layer.append(
                     torch.nn.Linear(
@@ -70,12 +75,8 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
 
                 input_layer.append( activation(True) )
 
-        if self.steep_layer_size:
-            input_layer.append( torch.nn.Linear( io_size, z_size) )
-        else:
-            input_layer.append( torch.nn.Linear(
-                io_size-((self.nb_input_layer-1)*input_layer_increment), z_size) )
-        #input_layer.append( activation(True) )
+        # embedding layer, always thereé
+        input_layer.append( torch.nn.Linear( z_size, z_size) )
 
         self.input_layer = torch.nn.Sequential( *input_layer ) # join encoder layers
 
@@ -89,16 +90,19 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
 
         output_layer = []
 
-        for i in range(nb_output_layer-1):
-
+        for i in range(nb_output_layer):
             if self.steep_layer_size:
-                output_layer.append( torch.nn.Linear(io_size, io_size) )
-                output_layer.append( activation(True) )
-
+                if i == 0:
+                    output_layer.append( torch.nn.Linear(z_size, io_size ) )
+                    output_layer.append( activation(True) )
+                else:
+                    output_layer.append( torch.nn.Linear(io_size, io_size ) )
+                    output_layer.append( activation(True) )
             else:
-                next_layer_input_size = z_size+(i*output_layer_increment)
-                next_layer_output_size = z_size+((i+1)*output_layer_increment)
+                next_layer_input_size = min(z_size+(i*output_layer_increment), io_size)
 
+                next_layer_output_size = min(z_size+((i+1)*output_layer_increment), io_size)
+                
                 output_layer.append(
                     torch.nn.Linear(
                         next_layer_input_size,
@@ -107,13 +111,12 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
                 output_layer.append( activation(True) )
 
         # make sure last layer has correct size
-        output_layer.append(
-            torch.nn.Linear(
-                z_size+((nb_output_layer-1)*output_layer_increment),
-                io_size) )
-        #output_layer.append( activation(True) )
+        
+        # last layer, always there
+        output_layer.append(torch.nn.Linear(io_size,io_size) )
             
-        self.output_layer = torch.nn.Sequential( *output_layer ) # join decoder layers
+        # join decoder layers
+        self.output_layer = torch.nn.Sequential( *output_layer ) 
 
         # initialize layer's weights and biases
         self.output_layer.apply(self.init_weight_general_rule)
@@ -196,51 +199,6 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
         if classname.find('Linear') != -1:
             
             m.bias.data.fill_(0)
-
-
-    def get_loss(self, input_data, output_data):
-        """
-        compute mask mean square error (mmse) and return loss
-        use a mask if data is not normalized
-        input
-            input : torch.Tensor
-            output : torch.Tensor
-        """
-
-        mse_criterion = torch.nn.MSELoss(reduction='sum')
-        ce_criterion = torch.nn.cross
-
-        mask = torch.Tensor(output_data.size())
-
-        # compute mask
-        for variable in self.arch:
-            if output_data[variable["position"]:variable["size"]].mean() == 0:
-                mask[variable["position"]:variable["size"]] = True
-
-        loss, nb = 0, 0
-        for variable in self.arch:
-
-            if output_data[variable["position"]:variable["size"]].mean() == 0:
-                continue
-
-            if variable["type"] == "regression":
-
-                loss += mse_criterion(
-                    input_data[variable["position"]: variable["position"]+variable["size"]],
-                    output_data[variable["position"]: variable["position"]+variable["size"]])
-                nb += variable["size"]
-
-            elif variable["type"] == "classification":
-
-                loss += ce_criterion(
-                    input_data[variable["position"]: variable["position"]+variable["size"]],
-                    output_data[variable["position"]: variable["position"]+1])
-                nb += 1
-
-            else:
-                raise Exception("Error: invalid loss type requested.")
-
-        return loss / nb
 
 
     def to(self, *args, **kwargs):

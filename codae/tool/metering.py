@@ -73,7 +73,7 @@ class CombinedCriterion:
     to the architecture of the input.
     """
 
-    def __init__(self, arch, k_max, device, observation_mask):
+    def __init__(self, arch, k_max, device, observation_mask, reduction="none"):
 
         if k_max < 0 | k_max >= len(arch):
             raise Exception("Error: maximum number of corrupted index [k_max] must be (> 0) && (< len(arch)).")
@@ -81,6 +81,7 @@ class CombinedCriterion:
         self.arch = arch
         self.k_max = k_max
         self.device = device
+        self.reduction = reduction
 
         self.observation_mask = observation_mask
         self.io_size = len(self.observation_mask)
@@ -96,48 +97,68 @@ class CombinedCriterion:
             observation_mask=self.observation_mask,
             loss_mask=self.loss_mask).to(self.device).cpu().numpy()
 
-        self.MSE_criterion = torch.nn.MSELoss(reduction="none")
-        self.CE_criterion = torch.nn.CrossEntropyLoss(reduction="none")
+        self.MSE_criterion = torch.nn.MSELoss(reduction=self.reduction)
+        self.CE_criterion = torch.nn.NLLLoss(reduction=self.reduction)
 
 
-    def __call__(self, x, y):
-        """
-        Default method => compute the loss
-        input
-            x : torch.tensor
-            y : torch.Tensor
-        """
+    def __call__(self, x, y, as_numpy=False):
 
-        return self._compute_loss(x, y)
+        if self.reduction == "mean":
+            return self._mean_loss(x, y, as_numpy)
+        elif self.reduction == "none":
+            return self._full_loss(x, y, as_numpy)
+        else:
+            raise Exception("Unknown reduction type.")
 
 
-    def _compute_loss(self, x, y):
-        """
-        Compute the loss of each variable and return a list.
-        input 
-            x : torch.Tensor
-            y : torch.Tensor
-        """
+    def _full_loss(self, x, y, as_numpy=False):
 
-        loss = torch.zeros((x.size()[0], len(self.arch)), device=self.device)        
+        loss = torch.zeros((x.size()[0], len(self.arch)))
 
-        eps = 1e-6
-
-        for j, variable in enumerate(self.arch): # for each input variable
+        for i, variable in enumerate(self.arch):
 
             if variable["type"] == "regression":
 
-                loss[:,j:j+1] += torch.sqrt(self.MSE_criterion(
-                        input=x[:,variable["position"]:variable["position"]+variable["size"]],
-                        target=y[:,variable["position"]:variable["position"]+variable["size"]]) + eps)
+                loss[:, i:i+1] = self.MSE_criterion(
+                    input=x[:,variable["position"]:variable["position"]+variable["size"]],
+                    target=y[:,variable["position"]:variable["position"]+variable["size"]])
 
             else: # is classification
 
-                loss[:,j] += self.CE_criterion(
-                    input=y[:,variable["position"]:variable["position"]+variable["size"]],
-                    target=x[:,variable["position"]:variable["position"]+variable["size"]].max(1)[1])
+                loss[:, i] = self.CE_criterion(
+                    input=torch.log_softmax(y[:,variable["position"]:variable["position"]+variable["size"]], dim=1),
+                    target=x[:,variable["position"]:variable["position"]+variable["size"]].max(dim=1)[1])
+
+        if as_numpy:
+            return loss.clone().cpu().detach().numpy()
 
         return loss
+
+
+    def _mean_loss(self, x, y, as_numpy=False):
+
+        loss = [0 for x in range(len(self.arch))]
+
+        for i, variable in enumerate(self.arch):
+
+            if variable["type"] == "regression":
+
+                loss[i] += torch.sqrt(self.MSE_criterion(
+                    input=x[:,variable["position"]:variable["position"]+variable["size"]],
+                    target=y[:,variable["position"]:variable["position"]+variable["size"]]))
+
+            else: # is classification
+
+                loss[i] += self.CE_criterion(
+                    input=torch.log_softmax(y[:,variable["position"]:variable["position"]+variable["size"]], dim=1),
+                    target=x[:,variable["position"]:variable["position"]+variable["size"]].max(dim=1)[1])
+
+        if as_numpy:
+            loss = sum(loss)/len(self.arch)
+            return loss.clone().cpu().detach().numpy()
+
+        return sum(loss)/len(self.arch)
+
         
 
     ############################################################################
@@ -157,152 +178,7 @@ class CombinedCriterion:
 
 
     def get_partial(self, loss, mask):
-
-        partial_loss = np.zeros((loss.shape[0], len(self.arch)))
-
-        #print(loss)
-        #print(mask)
         
         partial_loss = (1-np.matmul(mask.cpu().numpy(), self.mask_transformation)) * loss
 
-        #print(partial_loss)
-        #print()
-
         return partial_loss
-
-
-
-class BookLoss:
-
-        def __init__(self, name, shape, device, loss=None):
-
-            self.name = name
-            self.shape = shape
-            self.device = device
-
-            if loss == None:
-                self.loss = np.zeros((shape[0], shape[1]))
-            else:
-                self.loss = loss
-
-        def add(self, x):
-
-            self.loss[:len(x)] += x
-
-            return self
-
-        def mean(self):
-
-            self.loss = np.mean(self.loss)
-
-            return self
-
-        def divide(self, x):
-            """
-            Return loss divided by scalar.
-            """
-
-            self.loss /= x
-
-            return self
-
-        def purge(self):
-            """
-            Set losses to zero.
-            """
-
-            self.loss = np.zeros((self.shape[0], self.shape[1]))
-
-            return self
-
-        def sum(self, dim=None):
-            """
-            Get sum over specific dimension.
-            """
-
-            if dim == None:
-                self.loss = np.sum(self.loss)
-            else:
-                self.loss = np.sum(self.loss, axis=dim)
-
-            return self
-
-        def get(self):
-
-            return self.loss
-
-        def copy(self):
-
-            return BookLoss(
-                name=self.name,
-                shape=self.shape,
-                device=self.device,
-                loss=self.loss)
-
-
-class LossManager:
-
-    def __init__(self, device):
-        """
-        Keep track of loss per variable & per missing number of variable.
-        Provide methods to get whole layer loss per number of missing variable ([1]x[k_max] list), and whole layer loss over all number of missing variables ([nb_variable]x[k_max] 2D list). Allow for sum or mean reduction scheme.
-        input
-            device
-        """
-
-        self.device = device
-
-        self.book = {}
-
-        self.log = {}
-
-    
-    def add_book(self, name, shape):
-
-        self.book[name] = BookLoss(
-            name=name,
-            shape=shape,
-            device=self.device)
-
-        return self
-
-
-    def get_book(self, name):
-
-        return self.book[name]
-
-
-    def copy_book(self, origin, destination):
-
-        self.add_book(
-            name=destination,
-            shape=self.book[origin].shape)
-
-        self.book[destination].loss = self.book[origin].loss
-
-        return self
-
-
-    def log_book(self, name):
-        """
-        Store book as a numpy array of losses.
-        input
-            name : str
-        """
-
-        if not name in self.log:
-            self.log[name] = []
-
-        self.log[name].append( self.book[name].get() )
-
-        return self
-
-
-    def get_log(self, name):
-
-        return self.log[name]
-
-
-    def get_mean(self, x):
-
-        return np.mean(x)        

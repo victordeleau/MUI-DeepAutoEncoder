@@ -43,14 +43,10 @@ def get_mask_transformation(observation_mask, loss_mask):
     return T
 
 
+"""
 class Normalizer:
 
     def __init__(self, device, normalization_type="min_max"):
-        """
-        input
-            normalization_type : str
-                how to normalize (min_max/...)
-        """
 
         self.normalization_type = normalization_type
         self.device = device
@@ -66,24 +62,18 @@ class Normalizer:
 
 
     def fit(self, data, mask=None):
-        """
-        fit normalization model to data
-        input
-            data : (np.ndarray/torch.Tensor)
-                data to normalize
-            mask : (np.ndarray/torch.Tensor)
-                optionnal mask to apply (to avoid normalizing nominal variables for ex)
-        """
 
         if mask == None:
-            self.mask = torch.ones((self.data.size()[0])).to(self.device)
+            self.mask = torch.ones((data.size()[0])).to(self.device)
         else:
-            self.mask = mask
+            self.mask = mask.to(self.device)
 
         # build I/O variables & masks ##########################################
 
-        self.min = (data.min(0, keepdim=True)[0] * self.mask).cpu().numpy()
-        self.max = (data.max(0, keepdim=True)[0] * self.mask).cpu().numpy()
+        print(data.min(0, keepdim=True))
+
+        self.min = (data.min(0, keepdim=True)[0] * self.mask)
+        self.max = (data.max(0, keepdim=True)[0] * self.mask)
         self.scale = self.max - self.min
         self.scale[self.scale == 0] = 1
 
@@ -118,14 +108,6 @@ class Normalizer:
 
     
     def do(self, data, loss=False):
-        """
-        normalize data using previously fitted model
-        input 
-            data : (np.ndarray/torch.Tensor)
-                data to normalize
-            loss : bool
-                use loss normalizer or not
-        """
 
         if not self.is_fitted:
             raise Exception("Error: normalizer is not fitted.")
@@ -137,6 +119,52 @@ class Normalizer:
         
 
     def undo(self, data, loss=False):
+
+        if not self.is_fitted:
+            raise Exception("Error: normalizer is not fitted.")
+
+        if not loss:
+            return (data * self.scale) + self.min
+
+        return (data * self.scale_for_loss) + self.min_for_loss
+    """
+
+
+class Normalizer:
+
+    def __init__(self, normalizer, device, normalization_type="min_max"):
+        """
+        input
+            normalizer : MinMAxScaler object
+                to extract attributes from
+            device : str
+                device on which to store tensors
+            normalization_type : str
+                how to normalize (min_max/...)
+        """
+
+        self.normalization_type = normalization_type
+        self.device = device
+
+        self.min = torch.Tensor(normalizer.data_min_).to(device)
+        self.max = torch.Tensor(normalizer.data_max_).to(device)
+        self.scale = torch.Tensor(normalizer.data_range_).to(device)
+
+
+    def do(self, data):
+        """
+        normalize data using previously fitted model
+        input 
+            data : (np.ndarray/torch.Tensor)
+                data to normalize
+            loss : bool
+                use loss normalizer or not
+        """
+
+        return (data - self.min) / self.scale
+        
+
+    def undo(self, data):
         """
         denormalize data using previously fitted model
         input 
@@ -146,13 +174,8 @@ class Normalizer:
                 use loss normalizer or not
         """
 
-        if not self.is_fitted:
-            raise Exception("Error: normalizer is not fitted.")
+        return (data * self.scale) + self.min
 
-        if not loss:
-            return (data * self.scale) + self.min
-
-        return (data * self.scale_for_loss) + self.min_for_loss
 
 
 

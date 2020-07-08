@@ -46,6 +46,7 @@ class MixedVariableDataset(Dataset):
             
             self.arch[-1]["position"] = self.io_size
             self.io_size += self.arch[-1]["size"]
+        print("\n")
 
         self.type_mask = torch.zeros((self.io_size))
         for i, variable in enumerate(self.arch):

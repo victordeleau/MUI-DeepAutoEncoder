@@ -43,93 +43,6 @@ def get_mask_transformation(observation_mask, loss_mask):
     return T
 
 
-"""
-class Normalizer:
-
-    def __init__(self, device, normalization_type="min_max"):
-
-        self.normalization_type = normalization_type
-        self.device = device
-
-        self.min = None
-        self.max = None
-        self.scale = None
-        self.min_for_loss = None
-        self.max_for_loss = None
-        self.scale_for_loss = None
-        
-        self.is_fitted = False
-
-
-    def fit(self, data, mask=None):
-
-        if mask == None:
-            self.mask = torch.ones((data.size()[0])).to(self.device)
-        else:
-            self.mask = mask.to(self.device)
-
-        # build I/O variables & masks ##########################################
-
-        print(data.min(0, keepdim=True))
-
-        self.min = (data.min(0, keepdim=True)[0] * self.mask)
-        self.max = (data.max(0, keepdim=True)[0] * self.mask)
-        self.scale = self.max - self.min
-        self.scale[self.scale == 0] = 1
-
-        # build loss variables & masks #########################################
-
-        mask_for_loss, min_for_loss, max_for_loss = [], [], []
-        b, c = 1, 0
-        for i in range(len(self.min[0])):
-            if self.mask[i] == 0:
-                if b == 1:
-                    b = 0
-                    mask_for_loss.append(0)
-                    min_for_loss.append(0)
-                    max_for_loss.append(1)      
-            else:
-                b = 1
-                c += 1
-                mask_for_loss.append(1)
-                min_for_loss.append(self.min[0, i])
-                max_for_loss.append(self.max[0, i])
-
-        self.mask_for_loss = torch.Tensor(mask_for_loss).to(self.device)
-        self.min_for_loss = torch.Tensor(min_for_loss).to(self.device)
-        self.max_for_loss = torch.Tensor(max_for_loss).to(self.device)
-
-        self.scale_for_loss = self.max_for_loss - self.min_for_loss
-        self.scale_for_loss[self.scale_for_loss == 0] = 1
-
-        self.is_fitted = True
-
-        return self
-
-    
-    def do(self, data, loss=False):
-
-        if not self.is_fitted:
-            raise Exception("Error: normalizer is not fitted.")
-
-        if not loss:
-            return (data - self.min) / self.scale
-
-        return (data - self.min_for_loss) / self.scale_for_loss
-        
-
-    def undo(self, data, loss=False):
-
-        if not self.is_fitted:
-            raise Exception("Error: normalizer is not fitted.")
-
-        if not loss:
-            return (data * self.scale) + self.min
-
-        return (data * self.scale_for_loss) + self.min_for_loss
-    """
-
-
 class Normalizer:
 
     def __init__(self, normalizer, device, normalization_type="min_max"):
@@ -284,7 +197,6 @@ class Corrupter:
             binomial_coef_indices.append( torch.LongTensor(list(itertools.combinations(indices, k+1))) )
             self.nb_corruption_per_k[k] = len(binomial_coef_indices[-1])
         self.nb_run = sum(self.nb_corruption_per_k)
-        #print(self.nb_corruption_per_k)
 
         # dictionnary of stacked binary masks tensors
         binary_masks = []

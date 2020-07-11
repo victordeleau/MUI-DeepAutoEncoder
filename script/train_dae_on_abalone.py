@@ -131,6 +131,8 @@ if __name__=="__main__":
         k_max=args.nb_missing,
         device=device)
 
+    print(corrupter.nb_corruption_per_k)
+
 
     ############################################################################
     # initialize model #########################################################
@@ -147,8 +149,8 @@ if __name__=="__main__":
         nb_output_layer=config["MODEL"]["NB_OUTPUT_LAYER"],
         steep_layer_size=config["MODEL"]["STEEP_LAYER_SIZE"]) 
 
-    print()
     print(model)
+    print()
     model.to(device)
     dataset.to(device)
 
@@ -163,6 +165,7 @@ if __name__=="__main__":
         k_max=args.nb_missing,
         device=torch.device(device),
         observation_mask=dataset.type_mask,
+        weight=[0.4, 1, 1, 1, 1, 1, 1, 1, 1],
         reduction="mean")
 
     monitor_criterion = CombinedCriterion(
@@ -173,14 +176,13 @@ if __name__=="__main__":
         reduction="none")
 
     book = {} # list( KxM )
-    book["ftl_per_k"] = [] 
-    book["ptl_per_k"] = [] 
-    book["fvl_per_k"] = []
-    book["pvl_per_k"] = []
-
-    partial_training_loss = []
+    book["ftl_per_k"], book["ptl_per_k"] = [], []
+    book["fvl_per_k"], book["pvl_per_k"] = [], []
+    book["ftl"], book["ptl"] = [], []
+    book["fvl"], book["pvl"] = [], []
 
 
+    ############################################################################
     ############################################################################
     # training #################################################################
 
@@ -188,10 +190,12 @@ if __name__=="__main__":
 
         args.log.info("===================================================== EPOCH = %d\n" %epoch)
 
+        ########################################################################
         # training #############################################################
 
         ftl_per_k = np.zeros((args.nb_missing, len(dataset.arch)))
         ptl_per_k = np.zeros((args.nb_missing, len(dataset.arch)))
+        ftl, ptl = 0, 0
         
         for run in range(corrupter.nb_run):
 
@@ -220,29 +224,35 @@ if __name__=="__main__":
                 output_data[:, 3:] = tensor_normazer.undo(output_data[:, 3:])
 
                 # compute useful other metrics
-                ftl = monitor_criterion(input_data, output_data, as_numpy=True)
-                #print(ftl)
-                ftl_per_k += monitor_criterion.get_per_k(ftl, masks)
-                #print(ftl_per_k)
-                ptl = monitor_criterion.get_partial(ftl, fmask)
-                #print(ptl)
-                ptl_per_k += monitor_criterion.get_per_k(ptl, masks)
-                #print(ptl_per_k)
-                #input()
+                loss = monitor_criterion(input_data, output_data, as_numpy=True)
+                ftl += np.sum(loss)
+                ftl_per_k += monitor_criterion.get_per_k(loss, masks)
+                loss = monitor_criterion.get_partial(loss, fmask)
+                ptl += np.sum(loss)
+                ptl_per_k += monitor_criterion.get_per_k(loss, masks)
 
-        ftl_per_k = ftl_per_k/(nb_train*dataset.nb_predictor)
-        ptl_per_k = ptl_per_k/nb_train
+
+        for i, nb_korupt in enumerate(corrupter.nb_corruption_per_k):
+            ftl_per_k[i, :] = ftl_per_k[i, :]/(nb_train*nb_korupt)
+            ptl_per_k[i, :] = ptl_per_k[i, :]/(nb_train*nb_korupt/dataset.nb_predictor)
+
+        ftl /= sum(corrupter.nb_corruption_per_k)*nb_train
+        ptl /= sum(corrupter.nb_corruption_per_k)*nb_train/dataset.nb_predictor
 
         ftl_per_k[:, 1:] = np.sqrt(ftl_per_k[:, 1:])
         ptl_per_k[:, 1:] = np.sqrt(ptl_per_k[:, 1:])
 
+        ftl, ptl = np.sqrt(ftl), np.sqrt(ptl)
+
         book["ftl_per_k"].append( ftl_per_k )
         book["ptl_per_k"].append( ptl_per_k )
+        book["ftl"].append( ftl )
+        book["ptl"].append( ptl )
 
         #args.log.info("TRAINING FULL RMSE = %7f" %lm.get_log("ftl")[-1])
         args.log.info("TRAINING PARTIAL RMSE = %7f" %np.mean(book["ptl_per_k"][-1]))
 
-        print("  ", end="")
+        print("k ", end="")
         for name in dataset.variable_names:
             print("%s " %name.rjust(12), end="")
         print()
@@ -253,11 +263,12 @@ if __name__=="__main__":
             print()
         print()
         
-
+        ########################################################################
         # validation ###########################################################
 
         pvl_per_k = np.zeros((args.nb_missing, len(dataset.arch)))
         fvl_per_k = np.zeros((args.nb_missing, len(dataset.arch)))
+        fvl, pvl = 0, 0
 
         # corrupt each of the possibly missing input embeddings
         for run in range(corrupter.nb_run):
@@ -280,29 +291,34 @@ if __name__=="__main__":
                 output_data[:, 3:] = tensor_normazer.undo(output_data[:, 3:])
 
                 # compute useful other metrics
-                fvl = monitor_criterion(input_data, output_data, as_numpy=True)
-                #print(ftl)
-                fvl_per_k += monitor_criterion.get_per_k(fvl, masks)
-                #print(ftl_per_k)
-                pvl = monitor_criterion.get_partial(fvl, fmask)
-                #print(ptl)
-                pvl_per_k += monitor_criterion.get_per_k(pvl, masks)
-                #print(ptl_per_k)
-                #input()
+                loss = monitor_criterion(input_data, output_data, as_numpy=True)
+                fvl += np.sum(loss)
+                fvl_per_k += monitor_criterion.get_per_k(loss, masks)
+                loss = monitor_criterion.get_partial(loss, fmask)
+                pvl += np.sum(loss)
+                pvl_per_k += monitor_criterion.get_per_k(loss, masks)
 
 
-        fvl_per_k = fvl_per_k/(nb_validation*dataset.nb_predictor)
-        pvl_per_k = pvl_per_k/nb_validation
+        for i, nb_korupt in enumerate(corrupter.nb_corruption_per_k):
+            fvl_per_k[i, :] = fvl_per_k[i, :]/(nb_validation*nb_korupt)
+            pvl_per_k[i, :] = pvl_per_k[i, :]/(nb_validation*nb_korupt/dataset.nb_predictor)
+
+        fvl /= sum(corrupter.nb_corruption_per_k)*nb_validation
+        pvl /= sum(corrupter.nb_corruption_per_k)*nb_validation/dataset.nb_predictor
 
         fvl_per_k[:, 1:] = np.sqrt(fvl_per_k[:, 1:])
         pvl_per_k[:, 1:] = np.sqrt(pvl_per_k[:, 1:])
 
+        ftl, ptl = np.sqrt(ftl), np.sqrt(ptl)
+
         book["fvl_per_k"].append( fvl_per_k )
         book["pvl_per_k"].append( pvl_per_k )
+        book["fvl"].append( fvl )
+        book["pvl"].append( pvl )
 
         args.log.info("VALIDATION PARTIAL RMSE = %7f" %np.mean(book["pvl_per_k"][-1]))
 
-        print("  ", end="")
+        print("k ", end="")
         for name in dataset.variable_names:
             print("%s " %name.rjust(12), end="")
         print()
@@ -327,82 +343,81 @@ if __name__=="__main__":
 
 
     ############################################################################
-    # plot sum full training/validation RMSE (model learns to reconstruct input)
+    # plot full training vs full validation (model can learn)
 
-    """
-    sum_ftl = [ book[""][j] for j in range(config["MODEL"]["EPOCH"]) ]
+    if config["PLOT"]["FULL_RMSE"]:
 
-    sum_fvl = [ lm.get_log("fvl")[j] for j in range(config["MODEL"]["EPOCH"]) ]
-
-    plt.plot(epoch_axis, sum_ftl, label="Sum full training RMSE")
-    plt.plot(epoch_axis, sum_fvl, label="Sum full validation RMSE")
-
-    plt.xlabel('Epoch')
-    plt.ylabel('RMSE')
-    plt.legend(loc='best')
-    plt.title("Sum of full RMSE, training vs validation")
-
-    plt.savefig(os.path.join(d,"sum_full_RMSE.png"))
-    plt.clf()
-
-
-    ############################################################################
-    # plot sum partial training/validation RMSE (model can make predictions)
-
-    sum_ptl = [ np.sum(lm.get_log("ptl")[:][j]) for j in range(config["MODEL"]["EPOCH"])]
-
-    sum_pvl = [ np.sum(lm.get_log("pvl")[:][j]) for j in range(config["MODEL"]["EPOCH"])]
-
-    plt.plot(epoch_axis, sum_ptl, label="Sum partial training RMSE")
-    plt.plot(epoch_axis, sum_pvl, label="Sum partial validation RMSE")
-
-    plt.xlabel('Epoch')
-    plt.ylabel('RMSE')
-    plt.legend(loc='best')
-    plt.title("Sum of partial RMSE, training vs validation")
-
-    plt.savefig(os.path.join(d,"sum_partial_RMSE.png"))
-    plt.clf()
-    """
-
-    ############################################################################
-    # partial training loss per k
-
-    for i, name in enumerate(dataset.variable_names):
-
-        for k in range(args.nb_missing):
-
-            ptl_per_variable_per_k = [ book["ptl_per_k"][j][k][i] for j in range(config["MODEL"]["EPOCH"])]
-
-            plt.plot(epoch_axis, ptl_per_variable_per_k, label="k="+str(k+1))
+        plt.plot(epoch_axis, book["ftl"], label="Full training RMSE")
+        plt.plot(epoch_axis, book["fvl"], label="Full validation RMSE")
 
         plt.xlabel('Epoch')
         plt.ylabel('RMSE')
         plt.legend(loc='best')
-        plt.title("Partial Training RMSE per k missing variable")
+        plt.title("Full Training VS Validation RMSE")
 
-        plt.savefig(os.path.join(d,"partial_training_RMSE_per_k.png"))
+        plt.savefig(os.path.join(d,"full_training_vs_validation_RMSE.png"))
         plt.clf()
+
+
+    ############################################################################
+    # plot partial training vs partial validation (model can make predictions)
+
+    if config["PLOT"]["PARTIAL_RMSE"]:
+        
+        plt.plot(epoch_axis, book["ptl"], label="Partial training RMSE")
+        plt.plot(epoch_axis, book["pvl"], label="Partial validation RMSE")
+
+        plt.xlabel('Epoch')
+        plt.ylabel('RMSE')
+        plt.legend(loc='best')
+        plt.title("Partial Training VS Validation RMSE")
+
+        plt.savefig(os.path.join(d,"partial_training_vs_validation_RMSE.png"))
+        plt.clf()
+
+
+    ############################################################################
+    # partial training loss per k
+
+    if config["PLOT"]["TRAINING_RMSE_PER_K"]:
+
+        for i, name in enumerate(dataset.variable_names):
+
+            for k in range(args.nb_missing):
+
+                ptl_per_variable_per_k = [ book["ptl_per_k"][j][k][i] for j in range(config["MODEL"]["EPOCH"])]
+
+                plt.plot(epoch_axis, ptl_per_variable_per_k,label="k="+str(k+1))
+
+            plt.xlabel('Epoch')
+            plt.ylabel('RMSE')
+            plt.legend(loc='best')
+            plt.title("Partial Training RMSE per k missing variable")
+
+            plt.savefig(os.path.join(d,"partial_training_RMSE_per_k.png"))
+            plt.clf()
 
     
     ############################################################################
     # partial validation loss per k
 
-    for i, name in enumerate(dataset.variable_names):
+    if config["PLOT"]["VALIDATION_RMSE_PER_K"]:
 
-        for k in range(args.nb_missing):
+        for i, name in enumerate(dataset.variable_names):
 
-            pvl_per_variable_per_k = [ book["pvl_per_k"][j][k][i] for j in range(config["MODEL"]["EPOCH"])]
+            for k in range(args.nb_missing):
 
-            plt.plot(epoch_axis, pvl_per_variable_per_k, label="k="+str(k+1))
+                pvl_per_variable_per_k = [ book["pvl_per_k"][j][k][i] for j in range(config["MODEL"]["EPOCH"])]
 
-        plt.xlabel('Epoch')
-        plt.ylabel('RMSE')
-        plt.legend(loc='best')
-        plt.title("Partial Validation RMSE per k missing variable")
+                plt.plot(epoch_axis, pvl_per_variable_per_k,label="k="+str(k+1))
 
-        plt.savefig(os.path.join(d,"partial_validation_RMSE_per_k.png"))
-        plt.clf()
+            plt.xlabel('Epoch')
+            plt.ylabel('RMSE')
+            plt.legend(loc='best')
+            plt.title("Partial Validation RMSE per k missing variable")
+
+            plt.savefig(os.path.join(d,"partial_validation_RMSE_per_k.png"))
+            plt.clf()
 
 
     # export metric ############################################################

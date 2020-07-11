@@ -53,16 +53,23 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
         # define encoder #######################################################
 
         input_layer = []
-        for i in range(nb_input_layer):
+
+        # first layer, always there
+        #next_layer_input_size = io_size-input_layer_increment
+        input_layer.append( torch.nn.Linear(io_size, io_size) )
+        input_layer.append( activation(True) )
+        
+        # middle encoding layers
+        for i in range(1, nb_input_layer):
 
             if self.steep_layer_size:
                 input_layer.append( torch.nn.Linear(io_size, io_size) )
                 input_layer.append( activation(True) )
 
             else:
-                next_layer_input_size = max(io_size-(i*input_layer_increment), z_size)
+                next_layer_input_size = max(io_size-((i-1)*input_layer_increment), z_size)
 
-                next_layer_output_size = max(io_size-((i+1)*input_layer_increment), z_size)
+                next_layer_output_size = max(io_size-(i*input_layer_increment), z_size)
 
                 input_layer.append(
                     torch.nn.Linear(
@@ -75,8 +82,7 @@ class MixedVariableDenoisingAutoencoder(torch.nn.Module):
         if self.steep_layer_size:
             input_layer.append( torch.nn.Linear( io_size, z_size) )
         else:
-            next_layer_input_size = max(io_size-(nb_input_layer*input_layer_increment), z_size)
-            input_layer.append( torch.nn.Linear( next_layer_input_size, z_size) )
+            input_layer.append( torch.nn.Linear( next_layer_output_size, z_size) )
 
         self.input_layer = torch.nn.Sequential( *input_layer ) # join encoder layers
 

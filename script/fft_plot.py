@@ -1,3 +1,5 @@
+# display and save boxcar/gaussian functions and their Fourier transform
+
 import os
 
 import matplotlib.pyplot as plt

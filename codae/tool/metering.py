@@ -73,7 +73,7 @@ class CombinedCriterion:
     to the architecture of the input.
     """
 
-    def __init__(self, arch, k_max, device, observation_mask, reduction="none"):
+    def __init__(self, arch, k_max, device, observation_mask, weight=None, reduction="none"):
 
         if k_max < 0 | k_max >= len(arch):
             raise Exception("Error: maximum number of corrupted index [k_max] must be (> 0) && (< len(arch)).")
@@ -82,6 +82,11 @@ class CombinedCriterion:
         self.k_max = k_max
         self.device = device
         self.reduction = reduction
+
+        if weight == None:
+            self.weight = torch.ones((1,len(self.arch)))
+        else:
+            self.weight = torch.Tensor(weight)
 
         self.observation_mask = observation_mask
         self.io_size = len(self.observation_mask)
@@ -156,6 +161,9 @@ class CombinedCriterion:
         if as_numpy:
             loss = sum(loss)/len(self.arch)
             return loss.clone().cpu().detach().numpy()
+
+        loss = [ loss[i]*self.weight[i] for i in range(len(loss)) ]
+        #print(loss)
 
         return sum(loss)/len(self.arch)
 

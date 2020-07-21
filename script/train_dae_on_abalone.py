@@ -217,6 +217,10 @@ if __name__=="__main__":
                 # backpropagate training loss
                 optimizer.zero_grad()
                 loss.backward()
+
+                if config["MODEL"]["TRUNK_GRAD"]:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(),1)
+                    
                 optimizer.step()
 
                 # inverse normalization
@@ -231,10 +235,9 @@ if __name__=="__main__":
                 ptl += np.sum(loss)
                 ptl_per_k += monitor_criterion.get_per_k(loss, masks)
 
-
-        for i, nb_korupt in enumerate(corrupter.nb_corruption_per_k):
-            ftl_per_k[i, :] = ftl_per_k[i, :]/(nb_train*nb_korupt)
-            ptl_per_k[i, :] = ptl_per_k[i, :]/(nb_train*nb_korupt/dataset.nb_predictor)
+        for i in range(len(corrupter.nb_corruption_per_k)):
+            ftl_per_k[i, :] = ftl_per_k[i, :]/(nb_train*sum(corrupter.nb_corruption_per_k[:i+1]))
+            ptl_per_k[i, :] = ptl_per_k[i, :]/(nb_train*sum(corrupter.nb_corruption_per_k[:i+1])/dataset.nb_predictor)
 
         ftl /= sum(corrupter.nb_corruption_per_k)*nb_train
         ptl /= sum(corrupter.nb_corruption_per_k)*nb_train/dataset.nb_predictor
@@ -249,8 +252,7 @@ if __name__=="__main__":
         book["ftl"].append( ftl )
         book["ptl"].append( ptl )
 
-        #args.log.info("TRAINING FULL RMSE = %7f" %lm.get_log("ftl")[-1])
-        args.log.info("TRAINING PARTIAL RMSE = %7f" %np.mean(book["ptl_per_k"][-1]))
+        args.log.info("TRAINING PARTIAL ERROR = %7f" %np.mean(book["ptl_per_k"][-1]))
 
         print("k ", end="")
         for name in dataset.variable_names:
@@ -299,9 +301,9 @@ if __name__=="__main__":
                 pvl_per_k += monitor_criterion.get_per_k(loss, masks)
 
 
-        for i, nb_korupt in enumerate(corrupter.nb_corruption_per_k):
-            fvl_per_k[i, :] = fvl_per_k[i, :]/(nb_validation*nb_korupt)
-            pvl_per_k[i, :] = pvl_per_k[i, :]/(nb_validation*nb_korupt/dataset.nb_predictor)
+        for i in range(len(corrupter.nb_corruption_per_k)):
+            fvl_per_k[i, :] = fvl_per_k[i, :]/(nb_validation*sum(corrupter.nb_corruption_per_k[:i+1]))
+            pvl_per_k[i, :] = pvl_per_k[i, :]/(nb_validation*sum(corrupter.nb_corruption_per_k[:i+1])/dataset.nb_predictor)
 
         fvl /= sum(corrupter.nb_corruption_per_k)*nb_validation
         pvl /= sum(corrupter.nb_corruption_per_k)*nb_validation/dataset.nb_predictor
@@ -309,14 +311,14 @@ if __name__=="__main__":
         fvl_per_k[:, 1:] = np.sqrt(fvl_per_k[:, 1:])
         pvl_per_k[:, 1:] = np.sqrt(pvl_per_k[:, 1:])
 
-        ftl, ptl = np.sqrt(ftl), np.sqrt(ptl)
+        fvl, pvl = np.sqrt(fvl), np.sqrt(pvl)
 
         book["fvl_per_k"].append( fvl_per_k )
         book["pvl_per_k"].append( pvl_per_k )
         book["fvl"].append( fvl )
         book["pvl"].append( pvl )
 
-        args.log.info("VALIDATION PARTIAL RMSE = %7f" %np.mean(book["pvl_per_k"][-1]))
+        args.log.info("VALIDATION PARTIAL ERROR = %7f" %np.mean(book["pvl_per_k"][-1]))
 
         print("k ", end="")
         for name in dataset.variable_names:
@@ -341,45 +343,50 @@ if __name__=="__main__":
 
     epoch_axis = np.arange(0, config["MODEL"]["EPOCH"])
 
+    plt.rc('text', usetex=True)
+    plt.rcParams.update({'font.size': 18})
+    plt.rcParams['axes.titlepad'] = 15
+    plt.subplots_adjust(bottom=0.15)
+    #plt.subplots_adjust(top=0.88)
 
     ############################################################################
     # plot full training vs full validation (model can learn)
 
-    if config["PLOT"]["FULL_RMSE"]:
+    if config["PLOT"]["FULL_ERROR"]:
 
-        plt.plot(epoch_axis, book["ftl"], label="Full training RMSE")
-        plt.plot(epoch_axis, book["fvl"], label="Full validation RMSE")
+        plt.plot(epoch_axis, book["ftl"], label="Full training Error")
+        plt.plot(epoch_axis, book["fvl"], label="Full validation Error")
 
         plt.xlabel('Epoch')
-        plt.ylabel('RMSE')
+        plt.ylabel('Error')
         plt.legend(loc='best')
-        plt.title("Full Training VS Validation RMSE")
+        #plt.title("Full Error")
 
-        plt.savefig(os.path.join(d,"full_training_vs_validation_RMSE.png"))
+        plt.savefig(os.path.join(d,"full_training_vs_validation_Error.png"))
         plt.clf()
 
 
     ############################################################################
     # plot partial training vs partial validation (model can make predictions)
 
-    if config["PLOT"]["PARTIAL_RMSE"]:
+    if config["PLOT"]["PARTIAL_ERROR"]:
         
-        plt.plot(epoch_axis, book["ptl"], label="Partial training RMSE")
-        plt.plot(epoch_axis, book["pvl"], label="Partial validation RMSE")
+        plt.plot(epoch_axis, book["ptl"], label="Partial training Error")
+        plt.plot(epoch_axis, book["pvl"], label="Partial validation Error")
 
         plt.xlabel('Epoch')
-        plt.ylabel('RMSE')
+        plt.ylabel('Error')
         plt.legend(loc='best')
-        plt.title("Partial Training VS Validation RMSE")
+        #plt.title("Partial Error")
 
-        plt.savefig(os.path.join(d,"partial_training_vs_validation_RMSE.png"))
+        plt.savefig(os.path.join(d,"partial_training_vs_validation_Error.png"))
         plt.clf()
 
 
     ############################################################################
     # partial training loss per k
 
-    if config["PLOT"]["TRAINING_RMSE_PER_K"]:
+    if config["PLOT"]["TRAINING_ERROR_PER_K"]:
 
         for i, name in enumerate(dataset.variable_names):
 
@@ -387,21 +394,22 @@ if __name__=="__main__":
 
                 ptl_per_variable_per_k = [ book["ptl_per_k"][j][k][i] for j in range(config["MODEL"]["EPOCH"])]
 
-                plt.plot(epoch_axis, ptl_per_variable_per_k,label="k="+str(k+1))
+                plt.plot(epoch_axis, ptl_per_variable_per_k,label=r"$\delta$"+"="+str(k+1))
 
             plt.xlabel('Epoch')
-            plt.ylabel('RMSE')
+            plt.ylabel('Error')
+            plt.ylim(2, 5)
             plt.legend(loc='best')
-            plt.title("Partial Training RMSE per k missing variable")
+            #plt.title("Partial Training Error per "+r"$\delta$"+" missing variables")
 
-            plt.savefig(os.path.join(d,"partial_training_RMSE_per_k.png"))
+            plt.savefig(os.path.join(d,"partial_training_Error_per_k.png"))
             plt.clf()
 
     
     ############################################################################
     # partial validation loss per k
 
-    if config["PLOT"]["VALIDATION_RMSE_PER_K"]:
+    if config["PLOT"]["VALIDATION_ERROR_PER_K"]:
 
         for i, name in enumerate(dataset.variable_names):
 
@@ -409,14 +417,15 @@ if __name__=="__main__":
 
                 pvl_per_variable_per_k = [ book["pvl_per_k"][j][k][i] for j in range(config["MODEL"]["EPOCH"])]
 
-                plt.plot(epoch_axis, pvl_per_variable_per_k,label="k="+str(k+1))
+                plt.plot(epoch_axis, pvl_per_variable_per_k,label=r"$\delta$"+"="+str(k+1))
 
             plt.xlabel('Epoch')
-            plt.ylabel('RMSE')
+            plt.ylabel('Error')
+            plt.ylim(2, 5)
             plt.legend(loc='best')
-            plt.title("Partial Validation RMSE per k missing variable")
+            #plt.title("Partial Validation Error per "+r"$\delta$"+" missing variables")
 
-            plt.savefig(os.path.join(d,"partial_validation_RMSE_per_k.png"))
+            plt.savefig(os.path.join(d,"partial_validation_Error_per_k.png"))
             plt.clf()
 
 

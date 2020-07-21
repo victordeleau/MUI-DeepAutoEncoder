@@ -24,7 +24,7 @@ import torch
 import yaml
 
 from codae.tool import set_logging, display_info, get_date
-from codae.tool import get_object_size, get_rmse, LossAnalyzer, PlotDrawer, export_parameters_to_json, get_ranking_loss
+from codae.tool import get_rmse, LossAnalyzer, PlotDrawer, export_parameters_to_json, get_ranking_loss
 from codae.tool import load_dataset_of_embeddings, parse, collate_embedding
 
 from codae.model import EmbeddingDenoisingAutoencoder

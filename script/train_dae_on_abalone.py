@@ -345,7 +345,7 @@ if __name__=="__main__":
 
     plt.rc('text', usetex=True)
     plt.rcParams.update({'font.size': 18})
-    plt.rcParams['axes.titlepad'] = 15
+    #plt.rcParams['axes.titlepad'] = 15
     plt.subplots_adjust(bottom=0.15)
     #plt.subplots_adjust(top=0.88)
 
@@ -354,8 +354,8 @@ if __name__=="__main__":
 
     if config["PLOT"]["FULL_ERROR"]:
 
-        plt.plot(epoch_axis, book["ftl"], label="Full training Error")
-        plt.plot(epoch_axis, book["fvl"], label="Full validation Error")
+        plt.plot(epoch_axis, book["ftl"], label="Training")
+        plt.plot(epoch_axis, book["fvl"], label="Validation")
 
         plt.xlabel('Epoch')
         plt.ylabel('Error')
@@ -371,8 +371,8 @@ if __name__=="__main__":
 
     if config["PLOT"]["PARTIAL_ERROR"]:
         
-        plt.plot(epoch_axis, book["ptl"], label="Partial training Error")
-        plt.plot(epoch_axis, book["pvl"], label="Partial validation Error")
+        plt.plot(epoch_axis, book["ptl"], label="Training")
+        plt.plot(epoch_axis, book["pvl"], label="Validation")
 
         plt.xlabel('Epoch')
         plt.ylabel('Error')

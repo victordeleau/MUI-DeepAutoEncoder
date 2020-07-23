@@ -8,7 +8,7 @@ import numpy as np
 
 class EmbeddingDenoisingAutoencoder(torch.nn.Module):
     
-    def __init__(self, io_size, z_size, embedding_size, nb_input_layer=2, nb_output_layer=2, steep_layer_size=True, activation=torch.nn.LeakyReLU):
+    def __init__(self, io_size, z_size, embedding_size, nb_input_layer=2, nb_output_layer=2, steep_layer_size=True, activation=torch.nn.ReLU):
         """input
             io_size : int
                 size of the input and output layer
@@ -202,30 +202,6 @@ class EmbeddingDenoisingAutoencoder(torch.nn.Module):
             m.bias.data.fill_(0)
 
 
-    def get_mmse_loss(self, input_data, output_data):
-        """
-        compute mask mean square error (mmse) and return loss
-        use a mask if data is not normalized
-        input
-            input : torch.Tensor
-            output : torch.Tensor
-        """
-
-        mmse_criterion = torch.nn.MSELoss(reduction='sum')
-
-        # get index of values that aren't set to zero
-        mask = input_data != 0.0
-
-        # get number of uncorrupted input
-        nb_rating = torch.sum( mask )
-
-        loss = mmse_criterion(
-            input_data,
-            output_data * mask.float() ) 
-
-        return loss / nb_rating.float()
-
-
     def to(self, *args, **kwargs):
         """
         override .to() to make sure custom layers are sent to the correct device
@@ -238,58 +214,17 @@ class EmbeddingDenoisingAutoencoder(torch.nn.Module):
         return self
 
 
-    def corrupt(self, input_data, device, indices, corruption_type="zero_continuous"):
+    def corrupt(self, input_data, mask):
         """
         corrupt input_data using requested corruption type
         input
             input_data : torch.Tensor
                 the piece of data to corrupt
-            indices : list(list(int))
+            mask : torch.Tensor
                 list of embedding index to corrupt
-            corruption_type : str
-                type of corruption to apply
         output
             corrupted_input : torch.Tensor
                 the corrupted input data
-            corrupted_indices : list(int)
-                indices of corrupted categories
         """
 
-        if corruption_type == "zero_continuous":
-            return self._corrupt_zero_continuous(
-                input_data=input_data,
-                device=device,
-                indices=indices)
-        else:
-            raise Exception("Error: invalid corruption type requested (zero_continuous).")
-
-
-    def _corrupt_zero_continuous(self, input_data, device, indices):
-        """
-        randomly set one of the input embeddings and set all values to zero.
-        input
-            input_data : torch.Tensor
-                the piece of data to corrupt
-            indices : list(list(int))
-                list of embedding index to corrupt
-        output
-            c_input : torch.Tensor
-                the corrupted input data
-            c_indices : list(int)
-                indices of corrupted categories
-        """
-
-        c_input = input_data.clone()
-        c_mask = torch.empty(
-            input_data.size(),
-            device=device)
-
-        # for batch size 
-        for i in range( input_data.size()[0] ): 
-
-            # for each corrupted embedding
-            c_input[i][indices[i]*self.embedding_size:(indices[i]+1)*self.embedding_size]=0.0
-
-        c_mask = ( c_input == 0 )
-
-        return c_input, c_mask
+        return input_data.clone() * mask

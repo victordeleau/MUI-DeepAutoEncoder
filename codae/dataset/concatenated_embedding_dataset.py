@@ -78,6 +78,29 @@ class ConcatenatedEmbeddingDataset(Dataset):
             self.data_per_category[category] = torch.transpose(
                 self.data_per_category[category], 0, 1) / self.scale
 
+        # create dataset.arch
+        self.arch = [] # build architecture
+        self.io_size = 0
+        for i, name in enumerate(self.used_category):
+
+            self.arch.append({})
+            self.arch[-1]["name"] = name
+
+            # weight of variable in loss function [0 : 1] 
+            self.arch[-1]["lambda"] = 1 # for now TODO
+
+            self.arch[-1]["size"] = self.embedding_size
+            self.arch[-1]["type"] = "regression"
+            print("R" + str(self.embedding_size) + " ", end="")
+            
+            self.arch[-1]["position"] = self.io_size
+            self.io_size += self.arch[-1]["size"]
+        print("\n")
+
+        self.type_mask = torch.ones((self.io_size))
+
+        self.nb_predictor = self.embedding_size * self.nb_used_category
+
 
     def __len__(self):
 

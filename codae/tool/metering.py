@@ -26,45 +26,57 @@ def get_rmse(x, y):
     return np.sqrt( np.mean( (x-y)**2 ) )
 
 
+class RankingLoss:
 
-def get_ranking_loss(prediction, dataset, corrupt_embedding, idx, sub_index):
-    """
-    Compute item ranking loss
-    input 
-        prediction : torch.Tensor
-            the predicted observation
-        corrupt_embedding : list(list)
-            batch size list of list of corrupted indices
-        dataset : torch.data.Dataset
-            the dataset of original embedding
-    output
-        ranking_loss : 0 < float < 1
-            the ranking loss between 0 and 1
-    """
+    def __init__(self, dataset, validation_indices, device):
 
-    ranking_loss = 0
+        self.dataset = dataset
+        self.device = device
 
-    batch_index = 0
-    for i in idx: # for each observation in batch
+        self.category_getter = torch.zeros((self.dataset.nb_predictor), device=self.device)
 
-        # extract predicted missing embedding
-        predicted_missing_embedding = prediction[batch_index][corrupt_embedding[batch_index]*dataset.embedding_size : (corrupt_embedding[batch_index]+1)*dataset.embedding_size]
+        for i in range(self.dataset.nb_used_category):
+            self.category_getter[i*self.dataset.embedding_size] = i
 
-        # compute similarity in corresponding inventory
-        s = torch.matmul(
-            predicted_missing_embedding,
-            dataset.data_per_category[corrupt_embedding[batch_index]]).tolist()
+        #self.cosim = torch.nn.CosineSimilarity(dim=1)
 
-        batch_index += 1
+        self.validation_indices = validation_indices
 
-        rank = 0
-        for j in sub_index:
-            if s[i] > s[j]:
-                rank += 1
-        ranking_loss += rank/len(sub_index)
 
-    return ranking_loss/len(idx)
+    def get(self, prediction, fmask, indices):
 
+        ranking_loss = 0
+
+        fmask_reverse = 1 - fmask
+
+        # for each observation in batch
+        for i, idx in enumerate(indices):
+
+            # retrieve category of item
+            c = int(torch.dot(fmask_reverse[i], self.category_getter).item())
+
+            # compute similarity of item with corresponding inventory
+            """
+            print(type(c))
+            print(self.dataset.data_per_category[c].size())
+            print(prediction[i].size())
+            print(prediction[i][c*self.dataset.embedding_size:(c+1)*self.dataset.embedding_size].size())
+            print(prediction[i][c*self.dataset.embedding_size:(c+1)*self.dataset.embedding_size].reshape(1, -1).size())
+            """
+
+            s = torch.nn.functional.cosine_similarity(
+                self.dataset.data_per_category[c],
+                prediction[i][c*self.dataset.embedding_size:(c+1)*self.dataset.embedding_size].reshape(1, -1))
+
+            # get rank
+            rank = 0
+            for j in self.validation_indices:
+                if s[idx] > s[j]:
+                    rank += 1
+            #print("=>" + str(1 - (rank/len(self.validation_indices))))
+            ranking_loss += 1 - (rank/(len(self.validation_indices)-1))
+
+        return ranking_loss
 
 
 class CombinedCriterion:

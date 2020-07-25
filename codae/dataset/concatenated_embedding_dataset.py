@@ -73,10 +73,9 @@ class ConcatenatedEmbeddingDataset(Dataset):
 
         self.data = self.data / self.scale
 
-        for category in range(self.nb_used_category):
-
-            self.data_per_category[category] = torch.transpose(
-                self.data_per_category[category], 0, 1) / self.scale
+        #for category in range(self.nb_used_category):
+        #    self.data_per_category[category] = torch.transpose(
+        #        self.data_per_category[category], 0, 1) / self.scale
 
         # create dataset.arch
         self.arch = [] # build architecture
@@ -100,6 +99,21 @@ class ConcatenatedEmbeddingDataset(Dataset):
         self.type_mask = torch.ones((self.io_size))
 
         self.nb_predictor = self.embedding_size * self.nb_used_category
+
+        """
+        def PCA(x, k):
+            xm = torch.mean(x, 1, keepdim=True)
+            xc = torch.matmul(xm, torch.transpose(xm, 0, -1))
+            e_value, e_vector = torch.symeig(xc, eigenvectors=True)
+            idx = torch.argsort(e_value, descending=True)
+            e_vector = e_vector[:,idx]
+            return e_vector[:, :k].T.matmul(x).T
+
+        self.data = PCA(self.data, 64)
+        print(self.data.size())
+        """
+
+        print()
 
 
     def __len__(self):

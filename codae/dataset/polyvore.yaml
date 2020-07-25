@@ -1,8 +1,8 @@
 DATASET_NAME: polyvore
 IMAGE_PATH: images/
-ANNOTATION_FILE: train_no_dup.json
+ANNOTATION_FILE: /mnt/raidon_data/dataset/public/polyvore/train_no_dup.json
 CATEGORY:
-  top: ["top"]
-  bottom: ["pants", "shorts", "skirt"]
-  shoe: ["boots", "footwear"]
-IMAGE_EXTENSION: "png"
+  top: [11, 17, 18, 19, 21, 25, 26]
+  bottom: [7, 8, 9, 10, 27, 28, 29]
+  shoe: [41, 42, 43, 46, 47, 48, 49, 50]
+IMAGE_EXTENSION: "jpg"

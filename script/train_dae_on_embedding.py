@@ -24,9 +24,9 @@ import torch
 import yaml
 
 from codae.tool import set_logging, display_info, get_date
-from codae.tool import export_parameters_to_json, get_ranking_loss
+from codae.tool import export_parameters_to_json
 from codae.tool import load_dataset_of_embeddings, parse, collate_embedding
-from codae.tool import Corrupter, CombinedCriterion
+from codae.tool import Corrupter, CombinedCriterion, RankingLoss
 
 from codae.model import EmbeddingDenoisingAutoencoder
 
@@ -44,7 +44,7 @@ def parse():
 
     parser.add_argument('--config', type=str, required=True)
 
-    parser.add_argument('--debug', type=bool, default=True)
+    parser.add_argument('--debug', type=bool, default=False)
 
     parser.add_argument('--rank', type=bool, default=False)
 
@@ -84,9 +84,8 @@ if __name__ == "__main__":
         config=config,
         cache_dir="tmp/")
 
-    # print mean and deviation of embeddings
-
-    #print(dataset.data)
+    dataset_std = torch.std(dataset.data)
+    args.log.info("Dataset STD = " + str(dataset_std))
 
     use_gpu = torch.cuda.is_available()
     if use_gpu:
@@ -177,6 +176,9 @@ if __name__ == "__main__":
     book = {} # list( KxM )
     book["ftl"], book["ptl"] = [], []
     book["fvl"], book["pvl"] = [], []
+    book["rl"] = []
+
+    ranking_loss = RankingLoss(dataset, validation_indices, device=device)
 
 
     ############################################################################
@@ -220,8 +222,8 @@ if __name__ == "__main__":
             # get partial loss
             ptl += np.sum((1-fmask.cpu().numpy())*loss)
 
-        ftl /= dataset.nb_used_category*nb_train
-        ptl /= nb_train
+        ftl /= dataset.nb_predictor*nb_train
+        ptl /= nb_train*dataset.nb_predictor/dataset.nb_used_category
 
         ftl, ptl = np.sqrt(ftl), np.sqrt(ptl)
 
@@ -234,7 +236,7 @@ if __name__ == "__main__":
         ####################################################################
         # go over validation data ##########################################
 
-        fvl, pvl = 0, 0
+        fvl, pvl, rl = 0, 0, 0
 
         for c, (input_data, batch_indices) in enumerate(validation_loader):
 
@@ -255,16 +257,22 @@ if __name__ == "__main__":
             # get partial loss
             pvl += np.sum((1-fmask.cpu().numpy())*loss)
 
-        fvl /= dataset.nb_used_category*nb_validation
-        pvl /= nb_validation
+            # get ranking loss
+            rl += ranking_loss.get(output_data, fmask, batch_indices)
+
+        fvl /= dataset.nb_predictor*nb_validation
+        pvl /= nb_validation*dataset.nb_predictor/dataset.nb_used_category
+        rl /= nb_validation
 
         fvl, pvl = np.sqrt(fvl), np.sqrt(pvl)
 
         book["fvl"].append( fvl )
         book["pvl"].append( pvl )
+        book["rl"].append( rl )
 
         args.log.info("VALIDATION FULL ERROR    = %7f" %book["fvl"][-1])
         args.log.info("VALIDATION PARTIAL ERROR = %7f" %book["pvl"][-1])
+        args.log.info("VALIDATION RANKING ERROR = %7f" %book["rl"][-1])
 
     args.log.info("TRAINING HAS ENDED.")
 
@@ -283,9 +291,9 @@ if __name__ == "__main__":
     # plot full RMSE #######################################################
 
     plt.plot(epoch_axis, book["ftl"],
-        label="Full training RMSE")
+        label="Training")
     plt.plot(epoch_axis, book["fvl"],
-        label="Full validation RMSE")
+        label="Validation")
 
     plt.xlabel('Epoch')
     plt.ylabel('RMSE')
@@ -297,9 +305,11 @@ if __name__ == "__main__":
     # plot partial RMSE #####################################################
 
     plt.plot(epoch_axis, book["ptl"],
-        label="Partial training RMSE")
+        label="Training")
     plt.plot(epoch_axis, book["pvl"],
-        label="Partial validation RMSE")
+        label="Validation")
+    plt.plot(epoch_axis, [dataset_std for i in range(len(epoch_axis))],
+        label="Validation standard deviation")
 
     plt.xlabel('Epoch')
     plt.ylabel('RMSE')
@@ -310,30 +320,19 @@ if __name__ == "__main__":
 
     # plot ranking loss ########################################################
 
-    """
-    if args.rank:
+    if args.rank: # takes much longer
 
-        plt.plot(epoch_axis, metric_log["training_ranking_loss"],
-            label="Training ranking accuracy")
-        plt.plot(epoch_axis, metric_log["validation_ranking_loss"],
-            label="Validation ranking accuracy")
-        plt.plot(epoch_axis, [0.5 for i in range(config["MODEL"]["EPOCH"])], label="Mean ranking accuracy")
+        plt.plot(epoch_axis, book["rl"])
+        plt.plot(epoch_axis, [0.5 for i in range(len(epoch_axis))], "Random rank")
 
         plt.xlabel('Epoch')
-        plt.ylabel('Ranking accuracy')
-        plt.ylim(ymin=0, ymax=1)
+        plt.ylabel('RIRE')
         plt.legend(loc='best')
 
-        plt.savefig(os.path.join(d,"RANKING.png"))
+        plt.savefig(os.path.join(d,"partial_RIRE.png"))
         plt.clf()
-    """
     
     # export metric ############################################################
-
-    """
-    with open(os.path.join(d, "metric_log.json"),'w+') as f:
-        json.dump(metric_log, f)
-    """
 
     args.log.info("Data saved in directory %s" %d)
     
